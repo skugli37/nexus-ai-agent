@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev.log
+server.log
+
+# Database
+*.db
+*.db-journal
+prisma/migrations/
+
+# NEXUS runtime files
+.nexus/memory/*.json
+.nexus/sessions/*.json
+.nexus/logs/*.log
+
+# Download folder (user generated)
+download/
+
+# Bun
+bun.lockb
+
+# Testing
+coverage/
+
+# Misc
+*.pem
+.cache/
+agent-ctx/

@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "types": ["bun-types"],
+    "paths": {
+      "@/*": ["./*"],
+      "@core/*": ["./core/*"],
+      "@cli/*": ["./cli/*"],
+      "@tools/*": ["./tools/*"]
+    }
+  },
+  "include": ["core/**/*", "cli/**/*", "tools/**/*"],
+  "exclude": ["node_modules", "dist", ".nexus", "tests"]
+}

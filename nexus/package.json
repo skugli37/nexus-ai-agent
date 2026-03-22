@@ -1,0 +1,79 @@
+{
+  "name": "nexus-ai-agent",
+  "version": "1.0.0",
+  "description": "NEXUS - Autonomous AI Agent with Conscious/Subconscious Architecture, Vector Memory, Tool Forge, and Multi-Agent Delegation",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "nexus": "./cli/index.ts"
+  },
+  "scripts": {
+    "start": "bun run cli/index.ts",
+    "build": "bun build ./core/index.ts ./cli/index.ts --outdir ./dist",
+    "dev": "bun --watch run cli/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint core cli tools --ext .ts",
+    "nexus": "bun run cli/index.ts",
+    "init": "bun run cli/index.ts init",
+    "chat": "bun run cli/index.ts chat",
+    "status": "bun run cli/index.ts status",
+    "dream": "bun run cli/index.ts dream"
+  },
+  "dependencies": {
+    "z-ai-web-dev-sdk": "latest",
+    "eventemitter3": "^5.0.1",
+    "chalk": "^5.3.0",
+    "commander": "^12.0.0",
+    "inquirer": "^9.2.15",
+    "ora": "^8.0.1",
+    "yaml": "^2.3.4",
+    "marked": "^12.0.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/inquirer": "^9.0.7",
+    "@types/uuid": "^9.0.8",
+    "typescript": "^5.3.3",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "autonomous",
+    "llm",
+    "vector-database",
+    "tool-generation",
+    "multi-agent",
+    "self-evolution",
+    "conscious",
+    "subconscious",
+    "nexus"
+  ],
+  "author": "NEXUS Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/skugli37/nexus-ai-agent"
+  },
+  "bugs": {
+    "url": "https://github.com/skugli37/nexus-ai-agent/issues"
+  },
+  "homepage": "https://github.com/skugli37/nexus-ai-agent#readme",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "core",
+    "cli",
+    "tools",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
