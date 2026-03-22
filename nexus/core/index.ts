@@ -57,6 +57,57 @@ export type {
 export { CodeSandbox, codeSandbox } from './sandbox';
 export type { ExecutionResult, ExecutionOptions } from './sandbox';
 
+export { DockerSandbox } from './docker-sandbox';
+export type { 
+  DockerSandboxConfig, 
+  ExecutionOptions as DockerExecutionOptions,
+  ExecutionResult as DockerExecutionResult,
+  ContainerInfo,
+  PoolStats
+} from './docker-sandbox';
+
+// ClawHub Integration
+export { ClawHubClient } from './clawhub-client';
+export type {
+  ClawHubSkill,
+  SearchOptions,
+  SkillSearchResult,
+  InstallOptions,
+  InstallProgress,
+  SkillValidation,
+  CacheEntry,
+  ClawHubConfig,
+  CategoryInfo,
+} from './clawhub-client';
+export {
+  ClawHubError,
+  RateLimitError,
+  NetworkError,
+  SkillNotFoundError,
+  SkillValidationError,
+} from './clawhub-client';
+
+export { SkillSuggester } from './skill-suggester';
+export type {
+  TaskAnalysis,
+  SkillRecommendation,
+  SuggestionContext,
+  UserPreferences,
+  SuggestionResult,
+  SkillEmbedding,
+} from './skill-suggester';
+
+// WebSocket Server
+export { NexusWebSocketServer, getWebSocketServer, closeWebSocketServer } from './websocket-server';
+export type { 
+  NexusWSMessage, 
+  NexusWSMessageType,
+  NexusWSServerConfig,
+  WSClientInfo,
+  BroadcastOptions,
+  WSClient,
+} from './websocket-server';
+
 // Types
 export * from './types';
 

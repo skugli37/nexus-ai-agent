@@ -105,27 +105,79 @@ function getSkills(): Array<{ name: string; description: string; version: string
   return skills
 }
 
+// Load persisted metrics from file
+function loadMetrics(): {
+  tasksCompleted: number;
+  tasksFailed: number;
+  averageResponseTime: number;
+  totalTokensUsed: number;
+  dreamCyclesCompleted: number;
+  learningIterations: number;
+} {
+  const metricsPath = join(getNexusHome(), 'config', 'metrics.json')
+  
+  if (!existsSync(metricsPath)) {
+    return {
+      tasksCompleted: 0,
+      tasksFailed: 0,
+      averageResponseTime: 350,
+      totalTokensUsed: 0,
+      dreamCyclesCompleted: 0,
+      learningIterations: 0
+    }
+  }
+  
+  try {
+    const content = readFileSync(metricsPath, 'utf-8')
+    return JSON.parse(content)
+  } catch {
+    return {
+      tasksCompleted: 0,
+      tasksFailed: 0,
+      averageResponseTime: 350,
+      totalTokensUsed: 0,
+      dreamCyclesCompleted: 0,
+      learningIterations: 0
+    }
+  }
+}
+
+// Load agent state from file
+function loadAgentState(): {
+  status: string;
+  phase: string;
+  sessionId: string | null;
+  lastActivity: string;
+} {
+  const statePath = join(getNexusHome(), 'config', 'agent-state.json')
+  
+  if (!existsSync(statePath)) {
+    return {
+      status: 'idle',
+      phase: 'conscious',
+      sessionId: null,
+      lastActivity: new Date().toISOString()
+    }
+  }
+  
+  try {
+    const content = readFileSync(statePath, 'utf-8')
+    return JSON.parse(content)
+  } catch {
+    return {
+      status: 'idle',
+      phase: 'conscious',
+      sessionId: null,
+      lastActivity: new Date().toISOString()
+    }
+  }
+}
+
 export async function GET() {
   const memoryStats = getMemoryStats()
   const skills = getSkills()
-  
-  // Simulated agent state
-  const state = {
-    status: 'idle',
-    phase: 'conscious',
-    sessionId: null,
-    lastActivity: new Date().toISOString()
-  }
-  
-  // Simulated metrics
-  const metrics = {
-    tasksCompleted: Math.floor(Math.random() * 50),
-    tasksFailed: Math.floor(Math.random() * 5),
-    averageResponseTime: Math.random() * 500 + 200,
-    totalTokensUsed: Math.floor(Math.random() * 50000),
-    dreamCyclesCompleted: Math.floor(Math.random() * 10),
-    learningIterations: Math.floor(Math.random() * 20)
-  }
+  const metrics = loadMetrics()
+  const state = loadAgentState()
   
   return NextResponse.json({
     state,

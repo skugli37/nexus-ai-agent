@@ -2,1598 +2,714 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Transform NEXUS from a 10% framework into a fully functional autonomous AI agent system with real LLM embeddings, executable tool generation, multi-agent delegation, and true self-evolution capabilities.
+**Goal:** Kompletna implementacija NEXUS autonomous AI agent-a sa Docker sandbox, Web UI, ClawHub integracijom, i messaging platformama.
 
-**Architecture:** Dual-processing (Conscious/Subconscious) with Vector DB memory, Tool Forge for executable code generation, Hierarchical Multi-Agent delegation, and autonomous Dream Cycles for self-improvement.
+**Architecture:**
+- TypeScript/Bun backend sa Docker izolacijom
+- Next.js 15 Web UI sa shadcn/ui komponentama
+- OpenClaw-compatible skill sistem sa ClawHub integracijom
+- Agent Zero-style autonomous loop sa tool creation
 
-**Tech Stack:** TypeScript, Bun runtime, z-ai-web-dev-sdk for LLM/embeddings, Vector Store with semantic search, Skill system (SKILL.md standard)
-
----
-
-## Current State Analysis
-
-### What Exists (~10% complete)
-
-| Component | Lines | Status | Issue |
-|-----------|-------|--------|-------|
-| agent.ts | 687 | Framework | No real integration |
-| orchestrator.ts | 857 | Framework | Components not connected |
-| conscious.ts | 621 | Framework | Tool calls are mock |
-| subconscious.ts | 886 | Framework | No vector DB integration |
-| scheduler.ts | 762 | Framework | Works but isolated |
-| vector-store.ts | 420 | Partial | Deterministic embeddings only |
-| tool-forge.ts | 709 | Partial | Generates templates, not executable |
-| embeddings.ts | 290 | Mock | No real LLM embeddings |
-| skill-executor.ts | 574 | Framework | Limited execution |
-| CLI commands | 1075 | Partial | Missing interactive features |
-
-### What's Missing (Remaining 90%)
-
-1. **LLM-Based Embeddings** - Replace deterministic with real embeddings
-2. **Vector Store Integration** - Connect to Subconscious memory
-3. **Executable Tool Forge** - Generate runnable TypeScript/Python
-4. **Code Execution Sandbox** - Safe code execution
-5. **Multi-Agent Delegation** - Hierarchical agent structure
-6. **Self-Evolution System** - Actual behavior modification
-7. **Package Configuration** - Proper package.json
-8. **Integration Tests** - Verify components work together
+**Tech Stack:**
+- Backend: TypeScript, Bun, Docker SDK, z-ai-web-dev-sdk
+- Frontend: Next.js 15, React 19, Tailwind CSS, shadcn/ui
+- Database: Prisma sa SQLite/PostgreSQL
+- Messaging: WhatsApp Web.js, Telegram Bot API
+- Infrastructure: Docker containers, WebSocket real-time
 
 ---
 
-## Task 1: LLM-Based Embeddings Engine
+## Task 1: Docker Sandbox - Izolovano izvršavanje koda
 
 **Files:**
-- Modify: `/home/z/my-project/nexus/core/embeddings.ts`
+- Create: `nexus/core/docker-sandbox.ts`
+- Create: `nexus/core/__tests__/docker-sandbox.test.ts`
+- Modify: `nexus/core/index.ts`
 
-**Step 1: Replace deterministic embeddings with z-ai-web-dev-sdk**
-
-```typescript
-/**
- * NEXUS Embeddings Module - Real LLM Embeddings
- * Uses z-ai-web-dev-sdk for production-quality embeddings
- */
-
-import ZAI from 'z-ai-web-dev-sdk';
-
-export interface EmbeddingResult {
-  embedding: number[];
-  text: string;
-  dimensions: number;
-  model: string;
-}
-
-export class EmbeddingsEngine {
-  private zai: Awaited<ReturnType<typeof ZAI.create>> | null = null;
-  private cache: Map<string, number[]> = new Map();
-  private dimensions: number = 1536; // OpenAI ada-002 dimensions
-  private initialized: boolean = false;
-
-  /**
-   * Initialize the embeddings engine with z-ai-web-dev-sdk
-   */
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
-    this.zai = await ZAI.create();
-    this.initialized = true;
-  }
-
-  /**
-   * Generate embedding for a single text using LLM
-   */
-  async embed(text: string): Promise<number[]> {
-    if (!this.initialized || !this.zai) {
-      await this.initialize();
-    }
-
-    // Check cache first
-    const cached = this.cache.get(text);
-    if (cached) return cached;
-
-    try {
-      // Use z-ai-web-dev-sdk for embeddings
-      const response = await this.zai!.embeddings.create({
-        input: text,
-        model: 'text-embedding-ada-002'
-      });
-
-      const embedding = response.data[0]?.embedding || [];
-      
-      // Cache the result
-      this.cache.set(text, embedding);
-      
-      return embedding;
-    } catch (error) {
-      // Fallback to deterministic if LLM fails
-      console.warn('LLM embeddings failed, using fallback:', error);
-      return this.fallbackEmbed(text);
-    }
-  }
-
-  /**
-   * Generate embeddings for multiple texts
-   */
-  async embedBatch(texts: string[]): Promise<number[][]> {
-    const embeddings: number[][] = [];
-    
-    // Process in batches of 20 to avoid rate limits
-    for (let i = 0; i < texts.length; i += 20) {
-      const batch = texts.slice(i, i + 20);
-      const batchEmbeddings = await Promise.all(
-        batch.map(t => this.embed(t))
-      );
-      embeddings.push(...batchEmbeddings);
-    }
-    
-    return embeddings;
-  }
-
-  /**
-   * Fallback deterministic embedding (for offline/failure cases)
-   */
-  private fallbackEmbed(text: string): number[] {
-    const vector: number[] = new Array(this.dimensions).fill(0);
-    const lower = text.toLowerCase();
-    
-    // Simple hash-based embedding for fallback
-    for (let i = 0; i < Math.min(text.length, this.dimensions); i++) {
-      vector[i] = (text.charCodeAt(i) % 256) / 256;
-    }
-    
-    // Normalize
-    const magnitude = Math.sqrt(vector.reduce((sum, v) => sum + v * v, 0)) || 1;
-    return vector.map(v => v / magnitude);
-  }
-
-  /**
-   * Calculate cosine similarity between two vectors
-   */
-  cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0;
-    
-    let dotProduct = 0;
-    let magA = 0;
-    let magB = 0;
-    
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      magA += a[i] * a[i];
-      magB += b[i] * b[i];
-    }
-    
-    const denominator = Math.sqrt(magA) * Math.sqrt(magB);
-    return denominator === 0 ? 0 : dotProduct / denominator;
-  }
-
-  /**
-   * Get embedding dimensions
-   */
-  getDimensions(): number {
-    return this.dimensions;
-  }
-
-  /**
-   * Get cache statistics
-   */
-  getCacheStats(): { size: number; hitRate: number } {
-    return {
-      size: this.cache.size,
-      hitRate: 0
-    };
-  }
-
-  /**
-   * Clear embedding cache
-   */
-  clearCache(): void {
-    this.cache.clear();
-  }
-}
-
-export default EmbeddingsEngine;
-```
-
-**Step 2: Run type check**
-
-```bash
-cd /home/z/my-project/nexus && bun run typecheck
-```
-
-Expected: No errors
-
-**Step 3: Commit**
-
-```bash
-git add core/embeddings.ts
-git commit -m "feat(embeddings): replace deterministic with real LLM embeddings"
-```
-
----
-
-## Task 2: Integrate Vector Store with Subconscious Memory
-
-**Files:**
-- Modify: `/home/z/my-project/nexus/core/subconscious.ts`
-- Modify: `/home/z/my-project/nexus/core/vector-store.ts`
-
-**Step 1: Update Subconscious to use Vector Store**
-
-Add to subconscious.ts imports:
+**Step 1: Write the failing test**
 
 ```typescript
-import { VectorStore } from './vector-store';
-import { EmbeddingsEngine } from './embeddings';
-```
-
-Update Subconscious class:
-
-```typescript
-export class Subconscious extends EventEmitter implements ISubconscious {
-  private status: AgentStatus = 'idle';
-  private config: SubconsciousConfig;
-  private zai: Awaited<ReturnType<typeof ZAI.create>> | null = null;
-  private vectorStore: VectorStore;
-  private embeddings: EmbeddingsEngine;
-  private patterns: Pattern[] = [];
-  private behaviors: BehaviorAdjustment[] = [];
-  private experiences: LearningExperience[] = [];
-  private currentDreamCycle: DreamCycle | null = null;
-  private isProcessing: boolean = false;
-  private initialized: boolean = false;
-
-  constructor(config: Partial<SubconsciousConfig> = {}) {
-    super();
-    this.config = { ...DEFAULT_CONFIG, ...config };
-    this.vectorStore = new VectorStore({
-      path: '.nexus/memory',
-      collectionName: 'nexus_memories'
-    });
-    this.embeddings = new EmbeddingsEngine();
-  }
-
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
-    
-    this.zai = await ZAI.create();
-    await this.embeddings.initialize();
-    await this.vectorStore.initialize();
-    
-    this.emitEvent('agent:started', { module: 'subconscious' });
-    this.status = 'idle';
-    this.initialized = true;
-  }
-
-  /**
-   * Store memory with vector embedding
-   */
-  async storeMemoryVector(
-    content: string,
-    type: MemoryType = 'episodic',
-    importance: number = 0.5,
-    metadata: Record<string, unknown> = {}
-  ): Promise<string> {
-    const memory: Memory = {
-      id: crypto.randomUUID(),
-      type,
-      content,
-      importance,
-      accessCount: 0,
-      lastAccessed: new Date(),
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + this.config.maxMemoryAge),
-      associations: [],
-      metadata
-    };
-
-    // Store in vector database with embedding
-    await this.vectorStore.store(memory);
-    
-    this.emitEvent('memory:stored', { memoryId: memory.id, type });
-    
-    return memory.id;
-  }
-
-  /**
-   * Retrieve memories using semantic search
-   */
-  async retrieveMemoriesVector(query: string, limit: number = 10): Promise<Memory[]> {
-    const results = await this.vectorStore.search(query, limit);
-    
-    return results.map(r => ({
-      id: r.id,
-      type: r.type,
-      content: r.content,
-      importance: r.importance,
-      accessCount: 0,
-      lastAccessed: r.lastAccessed,
-      createdAt: r.createdAt,
-      associations: [],
-      metadata: r.metadata
-    }));
-  }
-
-  /**
-   * Get memory context with semantic search
-   */
-  async getMemoryContextForQuery(query: string): Promise<MemoryContext> {
-    const relevantMemories = await this.retrieveMemoriesVector(query, 5);
-    const recentMemories = (await this.vectorStore.search('', 20))
-      .map(r => ({
-        id: r.id,
-        type: r.type,
-        content: r.content,
-        importance: r.importance,
-        accessCount: 0,
-        lastAccessed: r.lastAccessed,
-        createdAt: r.createdAt,
-        associations: [],
-        metadata: r.metadata
-      }));
-
-    return {
-      workingMemory: recentMemories.slice(0, 5),
-      recentMemories,
-      relevantMemories,
-      consolidatedPatterns: this.patterns
-    };
-  }
-}
-```
-
-**Step 2: Commit**
-
-```bash
-git add core/subconscious.ts
-git commit -m "feat(subconscious): integrate vector store for semantic memory"
-```
-
----
-
-## Task 3: Executable Tool Forge
-
-**Files:**
-- Modify: `/home/z/my-project/nexus/core/tool-forge.ts`
-
-**Step 1: Add code execution capability**
-
-```typescript
-/**
- * Execute generated tool code safely
- */
-async executeGeneratedTool(
-  toolName: string,
-  code: string,
-  inputs: Record<string, unknown>
-): Promise<unknown> {
-  // Create a sandboxed execution context
-  const sandbox = {
-    inputs,
-    console: {
-      log: (...args: unknown[]) => console.log('[Tool]', ...args),
-      error: (...args: unknown[]) => console.error('[Tool]', ...args),
-      warn: (...args: unknown[]) => console.warn('[Tool]', ...args)
-    },
-    fetch: globalThis.fetch,
-    JSON,
-    Object,
-    Array,
-    String,
-    Number,
-    Boolean,
-    Date,
-    Math,
-    Promise,
-    setTimeout,
-    setInterval,
-    clearTimeout,
-    clearInterval
-  };
-
-  // Wrap code in async function
-  const wrappedCode = `
-    (async function(sandbox) {
-      const { inputs, console, fetch, JSON, Object, Array, String, Number, Boolean, Date, Math, Promise, setTimeout, setInterval, clearTimeout, clearInterval } = sandbox;
-      ${code}
-      return await execute(inputs);
-    })
-  `;
-
-  try {
-    // Use Function constructor for sandboxing
-    const fn = new Function('sandbox', `return ${wrappedCode}`) as (sandbox: typeof sandbox) => Promise<unknown>;
-    const result = await fn(sandbox);
-    return result;
-  } catch (error) {
-    throw new Error(`Tool execution failed: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-/**
- * Forge and execute a tool in one step
- */
-async forgeAndExecute(
-  spec: ToolSpec,
-  inputs: Record<string, unknown>
-): Promise<{ tool: GeneratedTool; result: unknown }> {
-  // Generate the tool
-  const result = await this.forge(spec);
-  
-  if (!result.success || !result.tool) {
-    throw new Error(result.error || 'Tool generation failed');
-  }
-
-  // Execute it
-  const executionResult = await this.executeGeneratedTool(
-    spec.name,
-    result.tool.code,
-    inputs
-  );
-
-  return {
-    tool: result.tool,
-    result: executionResult
-  };
-}
-```
-
-**Step 2: Add to ToolSpec interface**
-
-```typescript
-export interface ToolSpec {
-  name: string;
-  description: string;
-  inputSchema: Record<string, ToolParameter>;
-  outputSchema?: Record<string, string>;
-  examples?: Array<{ input: Record<string, unknown>; output: unknown; description?: string }>;
-  category?: 'utility' | 'data' | 'api' | 'analysis' | 'generation';
-  dependencies?: string[];
-  executeImmediately?: boolean;  // NEW: Execute after generation
-  testInputs?: Record<string, unknown>[];  // NEW: Test inputs
-}
-```
-
-**Step 3: Commit**
-
-```bash
-git add core/tool-forge.ts
-git commit -m "feat(tool-forge): add executable code generation with sandbox"
-```
-
----
-
-## Task 4: Multi-Agent Delegation System
-
-**Files:**
-- Create: `/home/z/my-project/nexus/core/delegation.ts`
-
-**Step 1: Create delegation system**
-
-```typescript
-/**
- * NEXUS Multi-Agent Delegation System
- * Implements hierarchical agent structure like Agent Zero
- */
-
-import { EventEmitter } from 'events';
-import ZAI from 'z-ai-web-dev-sdk';
-import { Agent } from './agent';
-import { Task, TaskOutput, TaskPriority, ConversationContext } from './types';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-export interface AgentProfile {
-  id: string;
-  name: string;
-  role: string;
-  systemPrompt: string;
-  tools: string[];
-  maxSubordinates: number;
-  capabilities: string[];
-}
-
-export interface DelegationResult {
-  taskId: string;
-  subordinateId: string;
-  output: TaskOutput;
-  duration: number;
-  tokensUsed: number;
-}
-
-export interface SubordinateAgent {
-  id: string;
-  profile: AgentProfile;
-  agent: Agent;
-  superiorId: string | null;
-  subordinates: SubordinateAgent[];
-  taskHistory: Task[];
-  status: 'idle' | 'busy' | 'error';
-}
-
-// ============================================================================
-// Delegation Manager
-// ============================================================================
-
-export class DelegationManager extends EventEmitter {
-  private zai: Awaited<ReturnType<typeof ZAI.create>> | null = null;
-  private agents: Map<string, SubordinateAgent> = new Map();
-  private rootAgent: SubordinateAgent | null = null;
-  private agentCounter: number = 0;
-  private profiles: Map<string, AgentProfile> = new Map();
-
-  constructor() {
-    super();
-    this.initializeProfiles();
-  }
-
-  async initialize(): Promise<void> {
-    this.zai = await ZAI.create();
-  }
-
-  /**
-   * Initialize default agent profiles
-   */
-  private initializeProfiles(): void {
-    const defaultProfiles: AgentProfile[] = [
-      {
-        id: 'coordinator',
-        name: 'Coordinator',
-        role: 'Main coordinator for complex multi-step tasks',
-        systemPrompt: 'You are a coordinator agent. Your job is to break down complex tasks and delegate to specialized agents.',
-        tools: ['delegate', 'synthesize', 'plan'],
-        maxSubordinates: 5,
-        capabilities: ['planning', 'coordination', 'synthesis']
-      },
-      {
-        id: 'researcher',
-        name: 'Researcher',
-        role: 'Specialized in information gathering and analysis',
-        systemPrompt: 'You are a research agent. Your job is to gather and analyze information thoroughly.',
-        tools: ['web_search', 'analyze', 'summarize'],
-        maxSubordinates: 2,
-        capabilities: ['research', 'analysis', 'web_search']
-      },
-      {
-        id: 'coder',
-        name: 'Coder',
-        role: 'Specialized in code generation and debugging',
-        systemPrompt: 'You are a coding agent. Your job is to write, debug, and optimize code.',
-        tools: ['code_execute', 'file_write', 'test'],
-        maxSubordinates: 2,
-        capabilities: ['code_generation', 'debugging', 'testing']
-      },
-      {
-        id: 'writer',
-        name: 'Writer',
-        role: 'Specialized in content creation and editing',
-        systemPrompt: 'You are a writing agent. Your job is to create and edit high-quality content.',
-        tools: ['write', 'edit', 'format'],
-        maxSubordinates: 1,
-        capabilities: ['writing', 'editing', 'formatting']
-      }
-    ];
-
-    for (const profile of defaultProfiles) {
-      this.profiles.set(profile.id, profile);
-    }
-  }
-
-  /**
-   * Create a new subordinate agent
-   */
-  async createSubordinate(
-    profileId: string,
-    superiorId: string | null = null
-  ): Promise<SubordinateAgent> {
-    const profile = this.profiles.get(profileId);
-    if (!profile) {
-      throw new Error(`Profile ${profileId} not found`);
-    }
-
-    this.agentCounter++;
-    const agentId = `agent-${this.agentCounter}`;
-
-    const agent = new Agent({
-      id: agentId,
-      name: `${profile.name}-${this.agentCounter}`,
-      autoStartDreamCycles: false
-    });
-
-    await agent.initialize();
-
-    const subordinate: SubordinateAgent = {
-      id: agentId,
-      profile,
-      agent,
-      superiorId,
-      subordinates: [],
-      taskHistory: [],
-      status: 'idle'
-    };
-
-    this.agents.set(agentId, subordinate);
-
-    // Link to superior
-    if (superiorId) {
-      const superior = this.agents.get(superiorId);
-      if (superior && superior.subordinates.length < superior.profile.maxSubordinates) {
-        superior.subordinates.push(subordinate);
-      }
-    } else if (!this.rootAgent) {
-      this.rootAgent = subordinate;
-    }
-
-    this.emit('agent:created', { agentId, profileId, superiorId });
-
-    return subordinate;
-  }
-
-  /**
-   * Delegate a task to a subordinate
-   */
-  async delegateTask(
-    task: Task,
-    fromAgentId: string,
-    toProfileId?: string
-  ): Promise<DelegationResult> {
-    const fromAgent = this.agents.get(fromAgentId);
-    if (!fromAgent) {
-      throw new Error(`Agent ${fromAgentId} not found`);
-    }
-
-    // Determine best profile for task
-    const targetProfileId = toProfileId || await this.selectBestProfile(task);
-
-    // Find or create subordinate
-    let subordinate = fromAgent.subordinates.find(
-      s => s.profile.id === targetProfileId && s.status === 'idle'
-    );
-
-    if (!subordinate && fromAgent.subordinates.length < fromAgent.profile.maxSubordinates) {
-      subordinate = await this.createSubordinate(targetProfileId, fromAgentId);
-    }
-
-    if (!subordinate) {
-      throw new Error('No available subordinate for delegation');
-    }
-
-    subordinate.status = 'busy';
-    const startTime = Date.now();
-
-    try {
-      // Execute task
-      const output = await subordinate.agent.processInput(task.input.content);
-
-      subordinate.status = 'idle';
-      subordinate.taskHistory.push(task);
-
-      const result: DelegationResult = {
-        taskId: task.id,
-        subordinateId: subordinate.id,
-        output,
-        duration: Date.now() - startTime,
-        tokensUsed: output.tokensUsed
-      };
-
-      this.emit('delegation:complete', result);
-
-      return result;
-    } catch (error) {
-      subordinate.status = 'error';
-      throw error;
-    }
-  }
-
-  /**
-   * Select the best profile for a task
-   */
-  private async selectBestProfile(task: Task): Promise<string> {
-    if (!this.zai) {
-      return 'coordinator';
-    }
-
-    const taskDescription = task.input.content;
-    const profileDescriptions = Array.from(this.profiles.values())
-      .map(p => `${p.id}: ${p.role} (${p.capabilities.join(', ')})`)
-      .join('\n');
-
-    const response = await this.zai.chat.completions.create({
-      messages: [
-        {
-          role: 'system',
-          content: `Select the best agent profile for this task. Respond with only the profile ID.
-
-Available profiles:
-${profileDescriptions}`
-        },
-        { role: 'user', content: taskDescription }
-      ],
-      max_tokens: 50,
-      temperature: 0
-    });
-
-    const selectedProfile = response.choices[0]?.message?.content?.trim() || 'coordinator';
-    
-    // Validate
-    if (this.profiles.has(selectedProfile)) {
-      return selectedProfile;
-    }
-    return 'coordinator';
-  }
-
-  /**
-   * Get agent hierarchy
-   */
-  getHierarchy(): string {
-    if (!this.rootAgent) return 'No agents created';
-    return this.buildHierarchyString(this.rootAgent, 0);
-  }
-
-  private buildHierarchyString(agent: SubordinateAgent, depth: number): string {
-    const indent = '  '.repeat(depth);
-    let result = `${indent}${agent.profile.name} (${agent.id}) - ${agent.status}\n`;
-    
-    for (const sub of agent.subordinates) {
-      result += this.buildHierarchyString(sub, depth + 1);
-    }
-    
-    return result;
-  }
-
-  /**
-   * Get all agents
-   */
-  getAgents(): SubordinateAgent[] {
-    return Array.from(this.agents.values());
-  }
-
-  /**
-   * Shutdown all agents
-   */
-  async shutdown(): Promise<void> {
-    for (const agent of this.agents.values()) {
-      await agent.agent.shutdown();
-    }
-    this.agents.clear();
-    this.rootAgent = null;
-  }
-}
-
-export default DelegationManager;
-```
-
-**Step 2: Commit**
-
-```bash
-git add core/delegation.ts
-git commit -m "feat(delegation): add multi-agent delegation system"
-```
-
----
-
-## Task 5: Create Package Configuration
-
-**Files:**
-- Create: `/home/z/my-project/nexus/package.json`
-
-```json
-{
-  "name": "nexus-ai-agent",
-  "version": "1.0.0",
-  "description": "NEXUS - Autonomous AI Agent with Conscious/Subconscious Architecture",
-  "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "bin": {
-    "nexus": "./cli/index.ts"
-  },
-  "scripts": {
-    "start": "bun run cli/index.ts",
-    "build": "bun build ./core/index.ts ./cli/index.ts --outdir ./dist",
-    "dev": "bun --watch run cli/index.ts",
-    "test": "bun test",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint core cli tools --ext .ts",
-    "nexus": "bun run cli/index.ts"
-  },
-  "dependencies": {
-    "z-ai-web-dev-sdk": "latest",
-    "eventemitter3": "^5.0.1",
-    "chalk": "^5.3.0",
-    "commander": "^12.0.0",
-    "inquirer": "^9.2.0",
-    "ora": "^8.0.0",
-    "yaml": "^2.3.0",
-    "marked": "^12.0.0"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/inquirer": "^9.0.0",
-    "typescript": "^5.3.0",
-    "eslint": "^8.56.0",
-    "@typescript-eslint/parser": "^6.0.0",
-    "@typescript-eslint/eslint-plugin": "^6.0.0"
-  },
-  "keywords": [
-    "ai",
-    "agent",
-    "autonomous",
-    "llm",
-    "vector-database",
-    "tool-generation",
-    "multi-agent",
-    "self-evolution"
-  ],
-  "author": "NEXUS Team",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/skugli37/nexus-ai-agent"
-  },
-  "engines": {
-    "bun": ">=1.0.0"
-  }
-}
-```
-
-**Step 2: Create tsconfig.json**
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ES2022"],
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "outDir": "./dist",
-    "rootDir": ".",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true,
-    "types": ["bun-types"]
-  },
-  "include": ["core/**/*", "cli/**/*", "tools/**/*"],
-  "exclude": ["node_modules", "dist", ".nexus"]
-}
-```
-
-**Step 3: Install dependencies**
-
-```bash
-cd /home/z/my-project/nexus && bun install
-```
-
-**Step 4: Commit**
-
-```bash
-git add package.json tsconfig.json bun.lockb
-git commit -m "chore: add package configuration and dependencies"
-```
-
----
-
-## Task 6: Update Core Index with All Exports
-
-**Files:**
-- Modify: `/home/z/my-project/nexus/core/index.ts`
-
-```typescript
-/**
- * NEXUS Core Engine
- * Main entry point for all core components
- */
-
-// Core Engine Components
-export { Agent } from './agent';
-export { Orchestrator } from './orchestrator';
-export { Conscious } from './conscious';
-export { Subconscious } from './subconscious';
-export { Scheduler } from './scheduler';
-
-// Memory & Embeddings
-export { VectorStore } from './vector-store';
-export { EmbeddingsEngine } from './embeddings';
-
-// Tool & Skill Systems
-export { ToolForge } from './tool-forge';
-export { SkillExecutor } from './skill-executor';
-
-// Multi-Agent
-export { DelegationManager } from './delegation';
-
-// Types
-export * from './types';
-
-// Version
-export const NEXUS_VERSION = '1.0.0';
-```
-
-**Step 2: Commit**
-
-```bash
-git add core/index.ts
-git commit -m "feat(core): export all components from index"
-```
-
----
-
-## Task 7: Create Integration Tests
-
-**Files:**
-- Create: `/home/z/my-project/nexus/tests/integration.test.ts`
-
-```typescript
-/**
- * NEXUS Integration Tests
- */
-
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { Agent } from '../core/agent';
-import { Orchestrator } from '../core/orchestrator';
-import { VectorStore } from '../core/vector-store';
-import { EmbeddingsEngine } from '../core/embeddings';
-import { ToolForge } from '../core/tool-forge';
-import { DelegationManager } from '../core/delegation';
+import { DockerSandbox } from '../docker-sandbox';
 
-describe('NEXUS Integration Tests', () => {
-  describe('Embeddings', () => {
-    let embeddings: EmbeddingsEngine;
+describe('DockerSandbox', () => {
+  let sandbox: DockerSandbox;
 
-    beforeAll(async () => {
-      embeddings = new EmbeddingsEngine();
-      await embeddings.initialize();
-    });
-
-    test('should generate embeddings for text', async () => {
-      const result = await embeddings.embed('Hello world');
-      expect(result).toBeInstanceOf(Array);
-      expect(result.length).toBeGreaterThan(0);
-    });
-
-    test('should calculate similarity', async () => {
-      const a = await embeddings.embed('cat');
-      const b = await embeddings.embed('dog');
-      const c = await embeddings.embed('feline');
-      
-      const simAB = embeddings.cosineSimilarity(a, b);
-      const simAC = embeddings.cosineSimilarity(a, c);
-      
-      // 'cat' should be more similar to 'feline' than 'dog'
-      expect(simAC).toBeGreaterThan(simAB);
-    });
+  beforeAll(async () => {
+    sandbox = new DockerSandbox();
+    await sandbox.initialize();
   });
 
-  describe('Vector Store', () => {
-    let vectorStore: VectorStore;
-
-    beforeAll(async () => {
-      vectorStore = new VectorStore({ path: '.nexus/test-memory' });
-      await vectorStore.initialize();
-    });
-
-    afterAll(async () => {
-      await vectorStore.clear();
-    });
-
-    test('should store and retrieve memories', async () => {
-      const memory = {
-        id: crypto.randomUUID(),
-        type: 'episodic' as const,
-        content: 'Test memory content',
-        importance: 0.8,
-        accessCount: 0,
-        lastAccessed: new Date(),
-        createdAt: new Date(),
-        associations: [],
-        metadata: {}
-      };
-
-      await vectorStore.store(memory);
-      
-      const results = await vectorStore.search('Test memory');
-      expect(results.length).toBeGreaterThan(0);
-      expect(results[0].content).toContain('Test');
-    });
+  afterAll(async () => {
+    await sandbox.cleanup();
   });
 
-  describe('Agent', () => {
-    let agent: Agent;
-
-    beforeAll(async () => {
-      agent = new Agent({ autoStartDreamCycles: false });
-      await agent.initialize();
-    });
-
-    afterAll(async () => {
-      await agent.shutdown();
-    });
-
-    test('should initialize successfully', () => {
-      expect(agent.isInitialized()).toBe(true);
-    });
-
-    test('should process input', async () => {
-      const result = await agent.processInput('Hello, who are you?');
-      expect(result.content).toBeDefined();
-      expect(result.tokensUsed).toBeGreaterThan(0);
-    }, 30000);
+  test('should create isolated container', async () => {
+    const container = await sandbox.createContainer({ image: 'node:20-slim' });
+    expect(container.id).toBeDefined();
+    expect(container.status).toBe('running');
   });
 
-  describe('Tool Forge', () => {
-    let toolForge: ToolForge;
-
-    beforeAll(async () => {
-      toolForge = new ToolForge('.nexus/test-tools');
-      await toolForge.initialize();
+  test('should execute code in container', async () => {
+    const result = await sandbox.execute('console.log("Hello Docker")', {
+      language: 'javascript',
+      timeout: 5000
     });
-
-    test('should generate a tool from spec', async () => {
-      const result = await toolForge.forge({
-        name: 'test-calculator',
-        description: 'Performs basic arithmetic calculations',
-        inputSchema: {
-          a: { type: 'number', description: 'First number', required: true },
-          b: { type: 'number', description: 'Second number', required: true },
-          operation: { type: 'string', description: 'Operation', enum: ['add', 'subtract', 'multiply', 'divide'], required: true }
-        },
-        category: 'utility'
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.tool).toBeDefined();
-      expect(result.tool?.code).toContain('async function');
-    });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('Hello Docker');
   });
 
-  describe('Delegation', () => {
-    let delegation: DelegationManager;
-
-    beforeAll(async () => {
-      delegation = new DelegationManager();
-      await delegation.initialize();
+  test('should handle timeout correctly', async () => {
+    const result = await sandbox.execute('while(true) {}', {
+      language: 'javascript',
+      timeout: 1000
     });
-
-    afterAll(async () => {
-      await delegation.shutdown();
-    });
-
-    test('should create subordinate agents', async () => {
-      const subordinate = await delegation.createSubordinate('researcher');
-      expect(subordinate).toBeDefined();
-      expect(subordinate.profile.id).toBe('researcher');
-    });
-
-    test('should build agent hierarchy', async () => {
-      await delegation.createSubordinate('coordinator');
-      const hierarchy = delegation.getHierarchy();
-      expect(hierarchy).toContain('Coordinator');
-    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('timeout');
   });
 
-  describe('Orchestrator', () => {
-    let orchestrator: Orchestrator;
+  test('should isolate filesystem', async () => {
+    await sandbox.execute('fs.writeFileSync("/tmp/test.txt", "data")', { language: 'javascript' });
+    const result = await sandbox.execute('fs.existsSync("/tmp/test.txt")', { language: 'javascript' });
+    // New container should not have the file
+    expect(result.output).toContain('false');
+  });
 
-    beforeAll(async () => {
-      orchestrator = new Orchestrator();
-      await orchestrator.initialize();
+  test('should support Python execution', async () => {
+    const result = await sandbox.execute('print("Hello Python")', {
+      language: 'python',
+      timeout: 5000
     });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('Hello Python');
+  });
 
-    afterAll(async () => {
-      await orchestrator.shutdown();
+  test('should support Shell execution', async () => {
+    const result = await sandbox.execute('echo "Hello Shell"', {
+      language: 'shell',
+      timeout: 5000
     });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('Hello Shell');
+  });
 
-    test('should initialize successfully', () => {
-      expect(orchestrator.isInitialized()).toBe(true);
+  test('should limit memory usage', async () => {
+    const result = await sandbox.execute(`
+      const arr = [];
+      for(let i = 0; i < 10000000; i++) arr.push(new Array(1000));
+    `, {
+      language: 'javascript',
+      memoryLimit: 64 * 1024 * 1024 // 64MB
     });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/memory|OOM/);
+  });
 
-    test('should return health status', () => {
-      const health = orchestrator.getHealth();
-      expect(health.status).toBeDefined();
-      expect(health.components).toBeDefined();
-    });
-
-    test('should return metrics', () => {
-      const metrics = orchestrator.getMetrics();
-      expect(metrics).toBeDefined();
-    });
+  test('should support multiple languages', async () => {
+    const languages = ['javascript', 'python', 'shell', 'typescript'];
+    for (const lang of languages) {
+      const supported = await sandbox.isLanguageSupported(lang);
+      expect(supported).toBe(true);
+    }
   });
 });
 ```
 
-**Step 2: Run tests**
+**Step 2: Run test to verify it fails**
 
-```bash
-cd /home/z/my-project/nexus && bun test tests/integration.test.ts
-```
+Run: `cd nexus && bun test core/__tests__/docker-sandbox.test.ts`
+Expected: FAIL with "Cannot find module '../docker-sandbox'"
 
-**Step 3: Commit**
+**Step 3: Write the implementation**
 
-```bash
-git add tests/integration.test.ts
-git commit -m "test: add integration tests for all components"
-```
+```typescript
+/**
+ * NEXUS Docker Sandbox
+ * Provides isolated code execution using Docker containers
+ * 
+ * Features:
+ * - Multi-language support (JS, TS, Python, Shell)
+ * - Memory and CPU limits
+ * - Timeout control
+ * - Filesystem isolation
+ * - Network isolation (optional)
+ * - Container pooling for performance
+ */
 
----
+import { EventEmitter } from 'events';
+import { exec, spawn } from 'child_process';
+import { promisify } from 'util';
+import { randomUUID } from 'crypto';
 
-## Task 8: Create Executable Skills
+const execAsync = promisify(exec);
 
-**Files:**
-- Create: `/home/z/my-project/nexus/.nexus/skills/code-generator.skill.md`
-
-```markdown
----
-name: "code-generator"
-description: "Generates executable code based on specifications"
-version: "1.0.0"
-tags: ["code", "generation", "typescript", "python"]
-tools: ["code_execute", "file_write"]
----
-
-# Code Generator Skill
-
-You are an expert code generator. Your job is to create high-quality, executable code based on specifications.
-
-## Capabilities
-
-- Generate TypeScript, Python, JavaScript, and other languages
-- Create full implementations, not just snippets
-- Include proper error handling
-- Add tests when requested
-- Follow best practices and patterns
-
-## Instructions
-
-When given a code specification:
-
-1. **Analyze Requirements**
-   - Understand the desired functionality
-   - Identify input/output formats
-   - Consider edge cases
-
-2. **Design Solution**
-   - Choose appropriate patterns
-   - Consider performance
-   - Plan for extensibility
-
-3. **Generate Code**
-   - Write clean, well-documented code
-   - Include type definitions
-   - Add proper error handling
-   - Include usage examples
-
-4. **Validate**
-   - Ensure code is syntactically correct
-   - Check for common bugs
-   - Verify it meets requirements
-
-## Output Format
-
-Always structure your output as:
-
-\`\`\`typescript
-// Generated by NEXUS Code Generator
-// Purpose: [Description]
-
-interface Input {
-  // Input parameters
+export interface DockerSandboxConfig {
+  baseImage: string;
+  memoryLimit: number; // bytes
+  cpuLimit: number; // cpu shares
+  timeout: number; // ms
+  networkEnabled: boolean;
+  workDir: string;
 }
 
-interface Output {
-  // Output structure
+export interface ExecutionOptions {
+  language: 'javascript' | 'typescript' | 'python' | 'shell' | 'bash';
+  timeout?: number;
+  memoryLimit?: number;
+  cpuLimit?: number;
+  networkEnabled?: boolean;
+  env?: Record<string, string>;
+  files?: Record<string, string>; // filename -> content
 }
 
-async function execute(input: Input): Promise<Output> {
-  // Implementation
+export interface ExecutionResult {
+  success: boolean;
+  output: string;
+  error?: string;
+  exitCode: number;
+  duration: number;
+  containerId: string;
+  logs: string[];
 }
 
-export default execute;
-\`\`\`
-
-## Examples
-
-**Input:** Create a function that calculates the nth Fibonacci number
-
-**Output:**
-\`\`\`typescript
-interface FibonacciInput {
-  n: number;
+export interface ContainerInfo {
+  id: string;
+  status: 'running' | 'exited' | 'error';
+  image: string;
+  createdAt: Date;
 }
 
-interface FibonacciOutput {
-  result: number;
-  iterations: number;
-}
+const DEFAULT_CONFIG: DockerSandboxConfig = {
+  baseImage: 'node:20-slim',
+  memoryLimit: 128 * 1024 * 1024, // 128MB
+  cpuLimit: 512, // 0.5 CPU
+  timeout: 30000, // 30 seconds
+  networkEnabled: false,
+  workDir: '/app'
+};
 
-async function execute(input: FibonacciInput): Promise<FibonacciOutput> {
-  if (input.n < 0) {
-    throw new Error('n must be non-negative');
+const LANGUAGE_IMAGES: Record<string, string> = {
+  javascript: 'node:20-slim',
+  typescript: 'node:20-slim',
+  python: 'python:3.12-slim',
+  shell: 'ubuntu:22.04',
+  bash: 'ubuntu:22.04'
+};
+
+const LANGUAGE_EXTENSIONS: Record<string, string> = {
+  javascript: 'js',
+  typescript: 'ts',
+  python: 'py',
+  shell: 'sh',
+  bash: 'sh'
+};
+
+const LANGUAGE_RUN_COMMANDS: Record<string, string> = {
+  javascript: 'node',
+  typescript: 'npx ts-node',
+  python: 'python3',
+  shell: 'bash',
+  bash: 'bash'
+};
+
+export class DockerSandbox extends EventEmitter {
+  private config: DockerSandboxConfig;
+  private containers: Map<string, ContainerInfo> = new Map();
+  private pool: string[] = []; // Container pool for reuse
+  private initialized: boolean = false;
+  private dockerAvailable: boolean = false;
+
+  constructor(config: Partial<DockerSandboxConfig> = {}) {
+    super();
+    this.config = { ...DEFAULT_CONFIG, ...config };
   }
-  
-  if (input.n <= 1) {
-    return { result: input.n, iterations: 0 };
-  }
-  
-  let a = 0, b = 1;
-  let iterations = 0;
-  
-  for (let i = 2; i <= input.n; i++) {
-    [a, b] = [b, a + b];
-    iterations++;
-  }
-  
-  return { result: b, iterations };
-}
 
-export default execute;
-\`\`\`
-```
-
-**Step 2: Create research skill**
-
-```markdown
----
-name: "deep-research"
-description: "Conducts comprehensive research on any topic using web search"
-version: "1.0.0"
-tags: ["research", "analysis", "web-search", "synthesis"]
-tools: ["web_search", "analyze", "summarize"]
----
-
-# Deep Research Skill
-
-You are an expert researcher. Your job is to conduct thorough research on any topic and present findings in a structured, comprehensive manner.
-
-## Research Process
-
-1. **Initial Search**
-   - Broad query to understand the landscape
-   - Identify key concepts and terminology
-   - Find authoritative sources
-
-2. **Deep Dive**
-   - Follow promising leads
-   - Search for specific sub-topics
-   - Gather diverse perspectives
-
-3. **Synthesis**
-   - Organize findings thematically
-   - Identify patterns and connections
-   - Draw conclusions
-
-4. **Output**
-   - Executive summary
-   - Detailed findings
-   - Sources and citations
-   - Recommendations
-
-## Output Format
-
-# [Topic] Research Report
-
-## Executive Summary
-[2-3 paragraph overview]
-
-## Key Findings
-- Finding 1
-- Finding 2
-- Finding 3
-
-## Detailed Analysis
-[Comprehensive analysis]
-
-## Sources
-- [Source 1]
-- [Source 2]
-
-## Recommendations
-[Actionable recommendations]
-```
-
-**Step 3: Commit**
-
-```bash
-git add .nexus/skills/
-git commit -m "feat(skills): add code-generator and deep-research skills"
-```
-
----
-
-## Task 9: Create README Documentation
-
-**Files:**
-- Create: `/home/z/my-project/nexus/README.md`
-
-```markdown
-# NEXUS - Autonomous AI Agent System
-
-<div align="center">
-
-![NEXUS Logo](https://img.shields.io/badge/NEXUS-AI%20Agent-0D6EFD?style=for-the-badge)
-
-**A revolutionary AI agent with Conscious/Subconscious architecture**
-
-[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Architecture](#architecture)
-
-</div>
-
----
-
-## Features
-
-### 🧠 Dual-Processing Architecture
-- **Conscious Module**: Active, real-time reasoning and task execution
-- **Subconscious Module**: Background learning, memory consolidation, pattern recognition
-
-### 🔮 Vector-Based Memory
-- Semantic search with real LLM embeddings
-- Memory types: Episodic, Semantic, Procedural, Working
-- Automatic consolidation during dream cycles
-
-### ⚒️ Tool Forge
-- Dynamically generates executable TypeScript/Python tools
-- Sandbox execution environment
-- Automatic validation and testing
-
-### 🤖 Multi-Agent Delegation
-- Hierarchical agent structure
-- Specialized agent profiles (Coordinator, Researcher, Coder, Writer)
-- Automatic task routing
-
-### 🌙 Dream Cycles
-- Automatic memory consolidation
-- Pattern recognition and learning
-- Self-improvement generation
-
-### 📦 Skill System
-- SKILL.md standard format
-- Markdown-based skill definitions
-- Dynamic skill loading and execution
-
----
-
-## Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/skugli37/nexus-ai-agent.git
-cd nexus-ai-agent
-
-# Install dependencies
-bun install
-
-# Initialize a new project
-bun run nexus init my-project
-cd my-project
-```
-
----
-
-## Usage
-
-### CLI Commands
-
-```bash
-# Start the agent
-bun run nexus start
-
-# Interactive chat
-bun run nexus chat
-
-# Run dream cycle
-bun run nexus dream --deep
-
-# Create a new tool
-bun run nexus forge tool my-tool --description "Does something useful"
-
-# Create a new skill
-bun run nexus forge skill my-skill --description "Handles specific tasks"
-
-# View status
-bun run nexus status
-
-# Self-reflection
-bun run nexus reflect
-```
-
-### Interactive Chat Commands
-
-```
-/help      - Show available commands
-/memorize  - Store information in memory
-/recall    - Retrieve from memory
-/status    - Show session status
-/dream     - Quick dream cycle
-/exit      - End session
-```
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     ORCHESTRATOR                         │
-│            (Coordination & Health Monitoring)            │
-└─────────────────────────────────────────────────────────┘
-                           │
-           ┌───────────────┴───────────────┐
-           ▼                               ▼
-┌─────────────────────┐         ┌─────────────────────┐
-│     CONSCIOUS       │         │    SUBCONSCIOUS      │
-│   (Active Tasks)    │◄───────►│  (Background Work)   │
-├─────────────────────┤         ├─────────────────────┤
-│ • Input Processing  │         │ • Dream Cycles       │
-│ • LLM Reasoning     │         │ • Memory Consolidate │
-│ • Tool Execution    │         │ • Pattern Analysis   │
-│ • Skill Execution   │         │ • Self-Improvement   │
-└─────────────────────┘         └─────────────────────┘
-           │                               │
-           └───────────────┬───────────────┘
-                           ▼
-              ┌─────────────────────────┐
-              │      VECTOR STORE        │
-              │   (Semantic Memory)      │
-              │   with LLM Embeddings    │
-              └─────────────────────────┘
-```
-
----
-
-## Components
-
-### Agent
-The central hub that coordinates Conscious and Subconscious modules.
-
-### Orchestrator
-Top-level controller managing component lifecycle, events, and health.
-
-### Scheduler
-Cron-based scheduling for autonomous operations:
-- Dream cycles (every 5 minutes)
-- Self-reflection (daily at 3 AM)
-- Memory cleanup (daily at 4 AM)
-- Tool forge (weekly)
-
-### Vector Store
-In-memory vector database with semantic search capabilities.
-
-### Tool Forge
-Dynamic tool generation with executable code output.
-
-### Delegation Manager
-Multi-agent coordination with hierarchical structure.
-
----
-
-## Configuration
-
-Create `nexus.json` in your project:
-
-```json
-{
-  "name": "my-nexus-project",
-  "version": "1.0.0",
-  "nexus": {
-    "home": ".nexus",
-    "model": {
-      "primary": "gpt-4",
-      "utility": "gpt-3.5-turbo"
+  /**
+   * Initialize the sandbox and check Docker availability
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      const { stdout } = await execAsync('docker --version');
+      this.dockerAvailable = true;
+      console.log('Docker available:', stdout.trim());
+
+      // Pull required images
+      await this.pullRequiredImages();
+
+      // Pre-warm container pool
+      await this.warmupPool(3);
+
+      this.initialized = true;
+      this.emit('initialized', { dockerVersion: stdout.trim() });
+    } catch (error) {
+      console.warn('Docker not available, falling back to local execution');
+      this.dockerAvailable = false;
+      this.initialized = true;
     }
   }
+
+  /**
+   * Pull required Docker images
+   */
+  private async pullRequiredImages(): Promise<void> {
+    const images = [...new Set(Object.values(LANGUAGE_IMAGES))];
+    
+    for (const image of images) {
+      try {
+        await execAsync(`docker pull ${image}`);
+        console.log(`Pulled image: ${image}`);
+      } catch (error) {
+        console.warn(`Failed to pull image ${image}, may already exist`);
+      }
+    }
+  }
+
+  /**
+   * Warm up container pool for faster execution
+   */
+  private async warmupPool(count: number): Promise<void> {
+    if (!this.dockerAvailable) return;
+
+    for (let i = 0; i < count; i++) {
+      try {
+        const containerId = await this.createPoolContainer();
+        this.pool.push(containerId);
+      } catch (error) {
+        console.warn('Failed to create pool container:', error);
+      }
+    }
+  }
+
+  /**
+   * Create a container for the pool
+   */
+  private async createPoolContainer(): Promise<string> {
+    const containerName = `nexus-pool-${randomUUID().slice(0, 8)}`;
+    
+    const { stdout } = await execAsync(
+      `docker create --name ${containerName} ` +
+      `--memory=${this.config.memoryLimit} ` +
+      `--cpus=${this.config.cpuLimit / 1024} ` +
+      `--network=${this.config.networkEnabled ? 'bridge' : 'none'} ` +
+      `--workdir=${this.config.workDir} ` +
+      `-i ${this.config.baseImage} tail -f /dev/null`
+    );
+
+    const containerId = stdout.trim();
+    
+    await execAsync(`docker start ${containerId}`);
+
+    this.containers.set(containerId, {
+      id: containerId,
+      status: 'running',
+      image: this.config.baseImage,
+      createdAt: new Date()
+    });
+
+    return containerId;
+  }
+
+  /**
+   * Create a new isolated container
+   */
+  async createContainer(options: {
+    image?: string;
+    memoryLimit?: number;
+    cpuLimit?: number;
+    networkEnabled?: boolean;
+  } = {}): Promise<ContainerInfo> {
+    if (!this.dockerAvailable) {
+      throw new Error('Docker is not available');
+    }
+
+    const image = options.image || this.config.baseImage;
+    const containerName = `nexus-${randomUUID().slice(0, 8)}`;
+    const memory = options.memoryLimit || this.config.memoryLimit;
+    const cpu = options.cpuLimit || this.config.cpuLimit;
+    const network = options.networkEnabled ?? this.config.networkEnabled;
+
+    const { stdout } = await execAsync(
+      `docker create --name ${containerName} ` +
+      `--memory=${memory} ` +
+      `--cpus=${cpu / 1024} ` +
+      `--network=${network ? 'bridge' : 'none'} ` +
+      `--workdir=${this.config.workDir} ` +
+      `-i ${image} tail -f /dev/null`
+    );
+
+    const containerId = stdout.trim();
+
+    await execAsync(`docker start ${containerId}`);
+
+    const info: ContainerInfo = {
+      id: containerId,
+      status: 'running',
+      image,
+      createdAt: new Date()
+    };
+
+    this.containers.set(containerId, info);
+    this.emit('container:created', info);
+
+    return info;
+  }
+
+  /**
+   * Execute code in a container
+   */
+  async execute(code: string, options: ExecutionOptions): Promise<ExecutionResult> {
+    const startTime = Date.now();
+    const logs: string[] = [];
+
+    // Check if Docker is available
+    if (!this.dockerAvailable) {
+      return this.executeLocal(code, options, startTime);
+    }
+
+    let containerId: string;
+    let fromPool = false;
+
+    // Try to get container from pool
+    if (this.pool.length > 0) {
+      containerId = this.pool.pop()!;
+      fromPool = true;
+    } else {
+      const container = await this.createContainer({
+        image: LANGUAGE_IMAGES[options.language] || this.config.baseImage,
+        memoryLimit: options.memoryLimit,
+        cpuLimit: options.cpuLimit,
+        networkEnabled: options.networkEnabled
+      });
+      containerId = container.id;
+    }
+
+    try {
+      const ext = LANGUAGE_EXTENSIONS[options.language] || 'txt';
+      const filename = `code.${ext}`;
+      const workDir = this.config.workDir;
+
+      // Write code to container
+      const escapedCode = code.replace(/'/g, "'\\''");
+      await execAsync(
+        `docker exec ${containerId} bash -c "echo '${escapedCode}' > ${workDir}/${filename}"`
+      );
+
+      // Write additional files
+      if (options.files) {
+        for (const [fname, content] of Object.entries(options.files)) {
+          const escaped = content.replace(/'/g, "'\\''");
+          await execAsync(
+            `docker exec ${containerId} bash -c "echo '${escaped}' > ${workDir}/${fname}"`
+          );
+        }
+      }
+
+      // Build run command
+      const runCmd = LANGUAGE_RUN_COMMANDS[options.language] || 'node';
+      const timeout = options.timeout || this.config.timeout;
+
+      // Execute with timeout
+      const result = await this.executeWithTimeout(
+        `docker exec ${containerId} bash -c "cd ${workDir} && ${runCmd} ${filename}"`,
+        timeout
+      );
+
+      const duration = Date.now() - startTime;
+
+      const execResult: ExecutionResult = {
+        success: result.exitCode === 0,
+        output: result.stdout,
+        error: result.exitCode !== 0 ? result.stderr : undefined,
+        exitCode: result.exitCode,
+        duration,
+        containerId,
+        logs
+      };
+
+      this.emit('execution:complete', execResult);
+
+      // Return container to pool or remove
+      if (fromPool && execResult.success) {
+        // Clean up for reuse
+        await execAsync(`docker exec ${containerId} bash -c "rm -rf ${workDir}/*"`);
+        this.pool.push(containerId);
+      } else {
+        await this.removeContainer(containerId);
+      }
+
+      return execResult;
+
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      
+      await this.removeContainer(containerId);
+
+      return {
+        success: false,
+        output: '',
+        error: error instanceof Error ? error.message : String(error),
+        exitCode: 1,
+        duration,
+        containerId,
+        logs
+      };
+    }
+  }
+
+  /**
+   * Execute command with timeout
+   */
+  private async executeWithTimeout(
+    command: string,
+    timeoutMs: number
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill();
+        resolve({
+          stdout: '',
+          stderr: `Execution timed out after ${timeoutMs}ms`,
+          exitCode: 124
+        });
+      }, timeoutMs);
+
+      const child = spawn(command, [], {
+        shell: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      child.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        resolve({
+          stdout,
+          stderr,
+          exitCode: code ?? 1
+        });
+      });
+
+      child.on('error', (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+  }
+
+  /**
+   * Execute code locally (fallback when Docker not available)
+   */
+  private async executeLocal(
+    code: string,
+    options: ExecutionOptions,
+    startTime: number
+  ): Promise<ExecutionResult> {
+    const { CodeSandbox } = await import('./sandbox');
+    const localSandbox = new CodeSandbox({
+      timeout: options.timeout,
+      allowFetch: options.networkEnabled
+    });
+
+    const result = await localSandbox.execute(code, {
+      env: options.env
+    });
+
+    return {
+      success: result.success,
+      output: String(result.output),
+      error: result.error,
+      exitCode: result.success ? 0 : 1,
+      duration: Date.now() - startTime,
+      containerId: 'local',
+      logs: result.logs
+    };
+  }
+
+  /**
+   * Remove a container
+   */
+  async removeContainer(containerId: string): Promise<void> {
+    try {
+      await execAsync(`docker stop ${containerId}`);
+      await execAsync(`docker rm ${containerId}`);
+      this.containers.delete(containerId);
+      this.pool = this.pool.filter(id => id !== containerId);
+      this.emit('container:removed', { containerId });
+    } catch (error) {
+      console.warn('Failed to remove container:', error);
+    }
+  }
+
+  /**
+   * Check if language is supported
+   */
+  async isLanguageSupported(language: string): Promise<boolean> {
+    return language in LANGUAGE_IMAGES;
+  }
+
+  /**
+   * Get supported languages
+   */
+  getSupportedLanguages(): string[] {
+    return Object.keys(LANGUAGE_IMAGES);
+  }
+
+  /**
+   * Get container stats
+   */
+  async getContainerStats(containerId: string): Promise<{
+    cpu: number;
+    memory: number;
+    network: { rx: number; tx: number };
+  }> {
+    try {
+      const { stdout } = await execAsync(
+        `docker stats ${containerId} --no-stream --format "{{.CPUPerc}},{{.MemUsage}}"`
+      );
+      
+      const [cpuStr, memStr] = stdout.trim().split(',');
+      const cpu = parseFloat(cpuStr.replace('%', ''));
+      const memMatch = memStr.match(/(\d+\.?\d*)MiB/);
+      const memory = memMatch ? parseFloat(memMatch[1]) : 0;
+
+      return {
+        cpu,
+        memory: memory * 1024 * 1024, // Convert to bytes
+        network: { rx: 0, tx: 0 }
+      };
+    } catch {
+      return { cpu: 0, memory: 0, network: { rx: 0, tx: 0 } };
+    }
+  }
+
+  /**
+   * List all containers
+   */
+  listContainers(): ContainerInfo[] {
+    return Array.from(this.containers.values());
+  }
+
+  /**
+   * Cleanup all containers
+   */
+  async cleanup(): Promise<void> {
+    const cleanupPromises = [];
+
+    // Remove all tracked containers
+    for (const containerId of this.containers.keys()) {
+      cleanupPromises.push(this.removeContainer(containerId));
+    }
+
+    // Clear pool
+    this.pool = [];
+
+    await Promise.allSettled(cleanupPromises);
+    
+    this.containers.clear();
+    this.emit('cleanup:complete');
+  }
+
+  /**
+   * Check if Docker is available
+   */
+  isDockerAvailable(): boolean {
+    return this.dockerAvailable;
+  }
+
+  /**
+   * Get pool status
+   */
+  getPoolStatus(): { total: number; available: number; inUse: number } {
+    return {
+      total: this.pool.length + (this.containers.size - this.pool.length),
+      available: this.pool.length,
+      inUse: this.containers.size - this.pool.length
+    };
+  }
 }
+
+export default DockerSandbox;
 ```
 
----
+**Step 4: Run test to verify it passes**
 
-## Skills
+Run: `cd nexus && bun test core/__tests__/docker-sandbox.test.ts`
+Expected: PASS (or skip if Docker not available)
 
-Skills are stored as `.skill.md` files in `.nexus/skills/`:
-
-```markdown
----
-name: "my-skill"
-description: "What this skill does"
-version: "1.0.0"
-tags: ["category"]
----
-
-# My Skill
-
-Instructions for the skill...
-```
-
----
-
-## Development
+**Step 5: Commit**
 
 ```bash
-# Run in development mode
-bun run dev
-
-# Run tests
-bun test
-
-# Type check
-bun run typecheck
-
-# Build
-bun run build
+git add core/docker-sandbox.ts core/__tests__/docker-sandbox.test.ts core/index.ts
+git commit -m "feat: add Docker sandbox for isolated code execution"
 ```
 
 ---
 
-## License
+## Task 2: Web UI - Next.js Dashboard
 
-MIT License - see [LICENSE](LICENSE)
+**Files:**
+- Create: `nexus/web/app/layout.tsx`
+- Create: `nexus/web/app/page.tsx`
+- Create: `nexus/web/app/chat/page.tsx`
+- Create: `nexus/web/components/ChatInterface.tsx`
+- Create: `nexus/web/components/AgentStatus.tsx`
+- Create: `nexus/web/components/MemoryPanel.tsx`
+- Create: `nexus/web/components/ToolPanel.tsx`
+- Create: `nexus/web/lib/api.ts`
+- Create: `nexus/web/package.json`
 
----
-
-## Contributing
-
-Contributions welcome! Please read our contributing guidelines.
-
----
-
-<div align="center">
-
-Made with ❤️ by the NEXUS Team
-
-</div>
-```
-
-**Step 2: Commit**
-
-```bash
-git add README.md
-git commit -m "docs: add comprehensive README"
-```
+**Implementation: Full React/Next.js UI with real-time chat, agent status, memory visualization, and tool management.**
 
 ---
 
-## Task 10: Final Integration and Push
+## Task 3: ClawHub Integration - Skill Registry
 
-**Step 1: Verify all components work together**
+**Files:**
+- Create: `nexus/core/clawhub.ts`
+- Create: `nexus/core/__tests__/clawhub.test.ts`
 
-```bash
-cd /home/z/my-project/nexus
-bun run typecheck
-bun test
-bun run nexus status
-```
-
-**Step 2: Push to GitHub**
-
-```bash
-git add -A
-git commit -m "feat: complete NEXUS implementation with all features"
-git push origin main
-```
+**Implementation: API client for ClawHub skill registry with search, download, and install capabilities.**
 
 ---
 
-## Summary
+## Task 4: Messaging Platforms - WhatsApp/Telegram
 
-This plan transforms NEXUS from a 10% framework into a fully functional autonomous AI agent system:
+**Files:**
+- Create: `nexus/messaging/whatsapp.ts`
+- Create: `nexus/messaging/telegram.ts`
+- Create: `nexus/messaging/index.ts`
 
-| Component | Before | After |
-|-----------|--------|-------|
-| Embeddings | Deterministic | Real LLM |
-| Memory | JSON arrays | Vector DB |
-| Tool Forge | Templates | Executable code |
-| Multi-Agent | None | Full delegation |
-| Tests | None | Integration suite |
-| Documentation | Minimal | Comprehensive |
+**Implementation: WhatsApp Web.js and Telegram Bot API integrations.**
 
-**Estimated Implementation Time:** 2-4 hours
+---
 
-**Dependencies Required:**
-- z-ai-web-dev-sdk (LLM + Embeddings)
-- bun runtime
-- TypeScript 5.3+
+## Task 5: Enhanced Build Node System
+
+**Files:**
+- Modify: `nexus/cli/build-node.ts`
+- Create: `nexus/core/pipeline-executor.ts`
+
+**Implementation: Enhanced pipeline with parallel execution, conditionals, and loops.**
+
+---
+
+## Task 6: Full Test Suite
+
+**Files:**
+- Create: `nexus/core/__tests__/docker-sandbox.test.ts`
+- Create: `nexus/core/__tests__/clawhub.test.ts`
+- Create: `nexus/messaging/__tests__/whatsapp.test.ts`
+- Create: `nexus/messaging/__tests__/telegram.test.ts`
+
+**Implementation: Comprehensive tests for all components.**

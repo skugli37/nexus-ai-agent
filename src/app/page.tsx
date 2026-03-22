@@ -1,693 +1,485 @@
-'use client'
+'use client';
 
-import { useState, useEffect, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { 
-  Brain, 
-  Sparkles, 
-  MessageSquare, 
-  Database, 
-  Settings, 
-  Zap,
+import * as React from 'react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Bot,
+  Activity,
+  Wrench,
+  Brain,
+  BookOpen,
+  Settings,
   Moon,
   Sun,
-  Activity,
-  Clock,
-  Cpu,
-  HardDrive,
+  Menu,
+  X,
+  Sparkles,
+  Zap,
   Terminal,
-  Plus,
-  Trash2,
-  RefreshCw,
-  Send,
-  Bot,
-  User,
-  AlertCircle,
-  CheckCircle,
-  Loader2
-} from 'lucide-react'
+  ChevronRight
+} from 'lucide-react';
+import { AgentChat } from '@/components/nexus/AgentChat';
+import { AgentStatus } from '@/components/nexus/AgentStatus';
+import { ToolPanel } from '@/components/nexus/ToolPanel';
+import { MemoryPanel } from '@/components/nexus/MemoryPanel';
+import { SkillPanel } from '@/components/nexus/SkillPanel';
 
-// ============================================================================
-// Types
-// ============================================================================
+// Navigation items
+const navItems = [
+  { id: 'dashboard', label: 'Dashboard', icon: Activity },
+  { id: 'chat', label: 'Chat', icon: Bot },
+  { id: 'skills', label: 'Skills', icon: BookOpen },
+  { id: 'tools', label: 'Tools', icon: Wrench },
+  { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'settings', label: 'Settings', icon: Settings },
+];
 
-interface AgentState {
-  status: 'idle' | 'processing' | 'dreaming' | 'reflecting' | 'error'
-  phase: 'conscious' | 'subconscious'
-  sessionId: string | null
-  lastActivity: string
-}
-
-interface Memory {
-  id: string
-  type: 'episodic' | 'semantic' | 'procedural' | 'working'
-  content: string
-  importance: number
-  createdAt: string
-}
-
-interface Skill {
-  name: string
-  description: string
-  version: string
-  tags: string[]
-}
-
-interface Message {
-  id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  timestamp: string
-}
-
-interface DreamCycle {
-  id: string
-  phase: string
-  memoriesProcessed: number
-  patternsDiscovered: number
-  improvementsGenerated: number
-  startedAt: string
-}
-
-// ============================================================================
-// Main Component
-// ============================================================================
-
-export default function NexusDashboard() {
-  // State
-  const [agentState, setAgentState] = useState<AgentState>({
-    status: 'idle',
-    phase: 'conscious',
-    sessionId: null,
-    lastActivity: new Date().toISOString()
-  })
-  
-  const [memories, setMemories] = useState<Memory[]>([])
-  const [skills, setSkills] = useState<Skill[]>([])
-  const [messages, setMessages] = useState<Message[]>([])
-  const [inputMessage, setInputMessage] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState('chat')
-  const [dreamCycle, setDreamCycle] = useState<DreamCycle | null>(null)
-  
-  // Stats
-  const [stats, setStats] = useState({
-    tasksCompleted: 0,
-    tasksFailed: 0,
-    averageResponseTime: 0,
-    totalTokensUsed: 0,
-    dreamCyclesCompleted: 0,
-    learningIterations: 0
-  })
-
-  // Fetch agent status
-  const fetchStatus = useCallback(async () => {
-    try {
-      const response = await fetch('/api/nexus/status')
-      if (response.ok) {
-        const data = await response.json()
-        setAgentState(data.state || agentState)
-        setStats(data.metrics || stats)
-        setMemories(data.memories || [])
-        setSkills(data.skills || [])
-      }
-    } catch (error) {
-      console.error('Failed to fetch status:', error)
-    }
-  }, [agentState, stats])
-
-  useEffect(() => {
-    fetchStatus()
-    const interval = setInterval(fetchStatus, 5000)
-    return () => clearInterval(interval)
-  }, [fetchStatus])
-
-  // Send message
-  const sendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return
-    
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: inputMessage,
-      timestamp: new Date().toISOString()
-    }
-    
-    setMessages(prev => [...prev, userMessage])
-    setInputMessage('')
-    setIsLoading(true)
-    setAgentState(prev => ({ ...prev, status: 'processing' }))
-
-    try {
-      const response = await fetch('/api/nexus/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: inputMessage })
-      })
-
-      const data = await response.json()
-      
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: data.response || 'I processed your request.',
-        timestamp: new Date().toISOString()
-      }
-      
-      setMessages(prev => [...prev, assistantMessage])
-      setStats(prev => ({
-        ...prev,
-        tasksCompleted: prev.tasksCompleted + 1,
-        totalTokensUsed: prev.totalTokensUsed + (data.tokensUsed || 0)
-      }))
-    } catch (error) {
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'system',
-        content: 'Error: Failed to process message',
-        timestamp: new Date().toISOString()
-      }
-      setMessages(prev => [...prev, errorMessage])
-      setStats(prev => ({ ...prev, tasksFailed: prev.tasksFailed + 1 }))
-    } finally {
-      setIsLoading(false)
-      setAgentState(prev => ({ ...prev, status: 'idle' }))
-    }
-  }
-
-  // Trigger dream cycle
-  const triggerDreamCycle = async () => {
-    setAgentState(prev => ({ ...prev, status: 'dreaming', phase: 'subconscious' }))
-    setDreamCycle({
-      id: crypto.randomUUID(),
-      phase: 'init',
-      memoriesProcessed: 0,
-      patternsDiscovered: 0,
-      improvementsGenerated: 0,
-      startedAt: new Date().toISOString()
-    })
-
-    try {
-      await fetch('/api/nexus/dream', { method: 'POST' })
-      setStats(prev => ({
-        ...prev,
-        dreamCyclesCompleted: prev.dreamCyclesCompleted + 1
-      }))
-    } catch (error) {
-      console.error('Dream cycle failed:', error)
-    } finally {
-      setAgentState(prev => ({ ...prev, status: 'idle', phase: 'conscious' }))
-      setDreamCycle(null)
-    }
-  }
-
-  // Clear memory
-  const clearMemory = async () => {
-    await fetch('/api/nexus/memory', { method: 'DELETE' })
-    setMemories([])
-  }
-
-  // Status badge color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'idle': return 'bg-green-500'
-      case 'processing': return 'bg-blue-500'
-      case 'dreaming': return 'bg-purple-500'
-      case 'reflecting': return 'bg-yellow-500'
-      case 'error': return 'bg-red-500'
-      default: return 'bg-gray-500'
-    }
-  }
-
+// Sidebar component
+function Sidebar({ 
+  activeTab, 
+  setActiveTab, 
+  collapsed, 
+  setCollapsed 
+}: {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  collapsed: boolean;
+  setCollapsed: (collapsed: boolean) => void;
+}) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
+    <div className={cn(
+      'flex flex-col h-full bg-slate-900/80 border-r border-slate-700/50 transition-all duration-300',
+      collapsed ? 'w-16' : 'w-64'
+    )}>
       {/* Header */}
-      <header className="border-b border-gray-700 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between p-4 border-b border-slate-700/50">
+        {!collapsed && (
+          <div className="flex items-center gap-2">
             <div className="relative">
-              <Brain className="w-10 h-10 text-purple-500" />
-              <Sparkles className="w-5 h-5 text-yellow-400 absolute -top-1 -right-1" />
+              <Bot className="h-8 w-8 text-indigo-400" />
+              <Sparkles className="h-4 w-4 text-purple-400 absolute -top-1 -right-1" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
                 NEXUS
               </h1>
-              <p className="text-xs text-gray-400">Intelligent Agent Framework</p>
+              <p className="text-xs text-slate-500">AI Agent</p>
             </div>
           </div>
-          
-          <div className="flex items-center gap-4">
-            <Badge variant="outline" className="gap-2">
-              <div className={`w-2 h-2 rounded-full ${getStatusColor(agentState.status)} animate-pulse`} />
-              {agentState.status.toUpperCase()}
-            </Badge>
-            <Badge variant="secondary">
-              {agentState.phase === 'conscious' ? <Sun className="w-3 h-3 mr-1" /> : <Moon className="w-3 h-3 mr-1" />}
-              {agentState.phase}
-            </Badge>
-            <Button 
-              size="sm" 
-              variant="outline"
-              onClick={triggerDreamCycle}
-              disabled={agentState.status !== 'idle'}
-            >
-              <Moon className="w-4 h-4 mr-2" />
-              Dream
-            </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-slate-400 hover:text-slate-200"
+          onClick={() => setCollapsed(!collapsed)}
+        >
+          {collapsed ? <Menu className="h-4 w-4" /> : <X className="h-4 w-4" />}
+        </Button>
+      </div>
+
+      {/* Navigation */}
+      <ScrollArea className="flex-1 py-4">
+        <nav className="space-y-1 px-2">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <Button
+                key={item.id}
+                variant="ghost"
+                className={cn(
+                  'w-full justify-start gap-3 transition-all',
+                  isActive 
+                    ? 'bg-indigo-600/20 text-indigo-400 border-l-2 border-indigo-400' 
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50',
+                  collapsed && 'justify-center px-2'
+                )}
+                onClick={() => setActiveTab(item.id)}
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+                {!collapsed && <span>{item.label}</span>}
+              </Button>
+            );
+          })}
+        </nav>
+      </ScrollArea>
+
+      {/* Footer */}
+      {!collapsed && (
+        <div className="p-4 border-t border-slate-700/50">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="relative">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            </div>
+            <span className="text-xs text-slate-400">System Online</span>
           </div>
-        </div>
-      </header>
-
-      <main className="container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar - Stats */}
-          <div className="lg:col-span-1 space-y-4">
-            {/* Agent Status Card */}
-            <Card className="bg-gray-800/50 border-gray-700">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-green-400" />
-                  Agent Status
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Tasks Completed</span>
-                  <span className="font-mono">{stats.tasksCompleted}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Tasks Failed</span>
-                  <span className="font-mono text-red-400">{stats.tasksFailed}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Dream Cycles</span>
-                  <span className="font-mono text-purple-400">{stats.dreamCyclesCompleted}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Tokens Used</span>
-                  <span className="font-mono">{stats.totalTokensUsed.toLocaleString()}</span>
-                </div>
-                <Separator className="bg-gray-700" />
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Avg Response</span>
-                  <span className="font-mono">{stats.averageResponseTime.toFixed(0)}ms</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Memory Stats */}
-            <Card className="bg-gray-800/50 border-gray-700">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Database className="w-4 h-4 text-blue-400" />
-                  Memory
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Total Entries</span>
-                  <span className="font-mono">{memories.length}</span>
-                </div>
-                <div className="space-y-1">
-                  {['episodic', 'semantic', 'procedural', 'working'].map(type => (
-                    <div key={type} className="flex justify-between text-xs">
-                      <span className="text-gray-500 capitalize">{type}</span>
-                      <span className="font-mono">{memories.filter(m => m.type === type).length}</span>
-                    </div>
-                  ))}
-                </div>
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
-                  className="w-full text-red-400 hover:text-red-300"
-                  onClick={clearMemory}
-                >
-                  <Trash2 className="w-3 h-3 mr-2" />
-                  Clear Memory
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Skills */}
-            <Card className="bg-gray-800/50 border-gray-700">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400" />
-                  Skills ({skills.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-32">
-                  {skills.map(skill => (
-                    <div key={skill.name} className="py-1 text-xs">
-                      <span className="font-medium">{skill.name}</span>
-                      <p className="text-gray-500 truncate">{skill.description}</p>
-                    </div>
-                  ))}
-                  {skills.length === 0 && (
-                    <p className="text-gray-500 text-xs">No skills loaded</p>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
+          <div className="text-xs text-slate-500">
+            <p>v2.0.0 - Self-Evolving</p>
+            <p className="mt-1">Conscious Phase Active</p>
           </div>
-
-          {/* Main Content */}
-          <div className="lg:col-span-3">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-4 bg-gray-800/50">
-                <TabsTrigger value="chat" className="gap-2">
-                  <MessageSquare className="w-4 h-4" />
-                  Chat
-                </TabsTrigger>
-                <TabsTrigger value="memory" className="gap-2">
-                  <Database className="w-4 h-4" />
-                  Memory
-                </TabsTrigger>
-                <TabsTrigger value="skills" className="gap-2">
-                  <Zap className="w-4 h-4" />
-                  Skills
-                </TabsTrigger>
-                <TabsTrigger value="terminal" className="gap-2">
-                  <Terminal className="w-4 h-4" />
-                  CLI
-                </TabsTrigger>
-              </TabsList>
-
-              {/* Chat Tab */}
-              <TabsContent value="chat" className="mt-4">
-                <Card className="bg-gray-800/50 border-gray-700 h-[600px] flex flex-col">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2">
-                      <Bot className="w-5 h-5 text-purple-400" />
-                      NEXUS Chat
-                    </CardTitle>
-                    <CardDescription>
-                      Interact with your intelligent agent
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex-1 flex flex-col">
-                    <ScrollArea className="flex-1 pr-4">
-                      {messages.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                          <Brain className="w-16 h-16 mb-4 opacity-20" />
-                          <p>Start a conversation with NEXUS</p>
-                          <p className="text-sm">Try: "Hello, what can you do?"</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {messages.map(msg => (
-                            <div 
-                              key={msg.id} 
-                              className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                              {msg.role === 'assistant' && (
-                                <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center shrink-0">
-                                  <Bot className="w-4 h-4" />
-                                </div>
-                              )}
-                              <div 
-                                className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                                  msg.role === 'user' 
-                                    ? 'bg-blue-600 text-white' 
-                                    : msg.role === 'system'
-                                    ? 'bg-red-900/50 text-red-200'
-                                    : 'bg-gray-700 text-white'
-                                }`}
-                              >
-                                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                                <span className="text-xs opacity-50 mt-1 block">
-                                  {new Date(msg.timestamp).toLocaleTimeString()}
-                                </span>
-                              </div>
-                              {msg.role === 'user' && (
-                                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
-                                  <User className="w-4 h-4" />
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                          {isLoading && (
-                            <div className="flex gap-3">
-                              <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              </div>
-                              <div className="bg-gray-700 rounded-lg px-4 py-2">
-                                <p className="text-sm text-gray-400">Thinking...</p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </ScrollArea>
-                    
-                    <div className="flex gap-2 mt-4">
-                      <Input
-                        value={inputMessage}
-                        onChange={e => setInputMessage(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                        placeholder="Type a message..."
-                        className="bg-gray-700 border-gray-600"
-                        disabled={isLoading}
-                      />
-                      <Button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()}>
-                        <Send className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Memory Tab */}
-              <TabsContent value="memory" className="mt-4">
-                <Card className="bg-gray-800/50 border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Database className="w-5 h-5 text-blue-400" />
-                      Memory Store
-                    </CardTitle>
-                    <CardDescription>
-                      View and manage agent memories
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-[500px]">
-                      {memories.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                          <HardDrive className="w-16 h-16 mb-4 opacity-20" />
-                          <p>No memories stored yet</p>
-                          <p className="text-sm">Chat with NEXUS to create memories</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {memories.map(memory => (
-                            <div 
-                              key={memory.id} 
-                              className="p-3 rounded-lg bg-gray-700/50 border border-gray-600"
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <Badge variant="outline" className="text-xs capitalize">
-                                  {memory.type}
-                                </Badge>
-                                <span className="text-xs text-gray-500">
-                                  {new Date(memory.createdAt).toLocaleString()}
-                                </span>
-                              </div>
-                              <p className="text-sm text-gray-300">{memory.content}</p>
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="text-xs text-gray-500">Importance:</span>
-                                <Progress value={memory.importance * 100} className="h-1 flex-1" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Skills Tab */}
-              <TabsContent value="skills" className="mt-4">
-                <Card className="bg-gray-800/50 border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Zap className="w-5 h-5 text-yellow-400" />
-                      Skills Registry
-                    </CardTitle>
-                    <CardDescription>
-                      Available skills and capabilities
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-[500px]">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {skills.map(skill => (
-                          <div 
-                            key={skill.name} 
-                            className="p-4 rounded-lg bg-gray-700/50 border border-gray-600 hover:border-purple-500/50 transition-colors"
-                          >
-                            <h3 className="font-medium mb-1">{skill.name}</h3>
-                            <p className="text-sm text-gray-400 mb-3">{skill.description}</p>
-                            <div className="flex gap-2 flex-wrap">
-                              {skill.tags.map(tag => (
-                                <Badge key={tag} variant="secondary" className="text-xs">
-                                  {tag}
-                                </Badge>
-                              ))}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-2">v{skill.version}</div>
-                          </div>
-                        ))}
-                        {skills.length === 0 && (
-                          <div className="col-span-2 flex flex-col items-center justify-center h-64 text-gray-500">
-                            <Zap className="w-16 h-16 mb-4 opacity-20" />
-                            <p>No skills loaded</p>
-                            <p className="text-sm">Add skills to .nexus/skills/ directory</p>
-                          </div>
-                        )}
-                      </div>
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* CLI Tab */}
-              <TabsContent value="terminal" className="mt-4">
-                <Card className="bg-gray-800/50 border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Terminal className="w-5 h-5 text-green-400" />
-                      NEXUS CLI
-                    </CardTitle>
-                    <CardDescription>
-                      Command-line interface for NEXUS
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="bg-black rounded-lg p-4 font-mono text-sm text-green-400 overflow-x-auto">
-                      <pre className="whitespace-pre-wrap">{`
-╔══════════════════════════════════════════════════════════════╗
-║   ███╗   ██╗███████╗██╗  ██╗██╗   ██╗███████╗              ║
-║   ████╗  ██║██╔════╝╚██╗██╔╝██║   ██║██╔════╝              ║
-║   ██╔██╗ ██║█████╗   ╚███╔╝ ██║   ██║███████╗              ║
-║   ██║╚██╗██║██╔══╝   ██╔██╗ ██║   ██║╚════██║              ║
-║   ██║ ╚████║███████╗██╔╝ ██╗╚██████╔╝███████║              ║
-║   ╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝              ║
-║                                                              ║
-║   Intelligent AI Agent Framework                            ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
-
-USAGE
-  nexus <command> [options]
-
-COMMANDS
-  init        Initialize a new NEXUS project
-  start       Start the NEXUS agent
-  stop        Stop the agent
-  status      View agent status
-  chat        Interactive chat mode
-  dream       Run dream cycle
-  forge       Create new tools/skills
-  reflect     Run self-reflection
-
-EXAMPLES
-  # Initialize a new project
-  $ bun run nexus-cli.ts init my-project
-
-  # Start interactive chat
-  $ bun run nexus-cli.ts chat
-
-  # Run dream cycle for consolidation
-  $ bun run nexus-cli.ts dream --deep
-
-  # Create a new skill
-  $ bun run nexus-cli.ts forge skill data-processor
-
-  # Self-reflection
-  $ bun run nexus-cli.ts reflect
-
-`}</pre>
-                    </div>
-                    
-                    <div className="mt-4 p-4 bg-gray-700/50 rounded-lg">
-                      <h4 className="font-medium mb-2 flex items-center gap-2">
-                        <Cpu className="w-4 h-4" />
-                        Quick Actions
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <Button size="sm" variant="outline" className="w-full">
-                          <RefreshCw className="w-3 h-3 mr-2" />
-                          Status
-                        </Button>
-                        <Button size="sm" variant="outline" className="w-full" onClick={triggerDreamCycle}>
-                          <Moon className="w-3 h-3 mr-2" />
-                          Dream
-                        </Button>
-                        <Button size="sm" variant="outline" className="w-full">
-                          <Plus className="w-3 h-3 mr-2" />
-                          New Skill
-                        </Button>
-                        <Button size="sm" variant="outline" className="w-full">
-                          <Settings className="w-3 h-3 mr-2" />
-                          Settings
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </div>
-        </div>
-      </main>
-
-      {/* Dream Cycle Overlay */}
-      {dreamCycle && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <Card className="bg-gray-800 border-purple-500/50 w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-purple-400">
-                <Moon className="w-5 h-5 animate-pulse" />
-                Dream Cycle Active
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="capitalize">{dreamCycle.phase.replace('_', ' ')}</span>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Memories Processed</span>
-                  <span>{dreamCycle.memoriesProcessed}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Patterns Discovered</span>
-                  <span>{dreamCycle.patternsDiscovered}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Improvements</span>
-                  <span>{dreamCycle.improvementsGenerated}</span>
-                </div>
-              </div>
-              
-              <Progress value={50} className="h-2" />
-            </CardContent>
-          </Card>
         </div>
       )}
     </div>
-  )
+  );
+}
+
+// Dashboard view
+function DashboardView() {
+  return (
+    <div className="space-y-6">
+      <AgentStatus />
+      
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <QuickActionCard
+          title="New Chat"
+          description="Start a conversation"
+          icon={Bot}
+          color="bg-indigo-600"
+        />
+        <QuickActionCard
+          title="Dream Cycle"
+          description="Run background processing"
+          icon={Moon}
+          color="bg-purple-600"
+        />
+        <QuickActionCard
+          title="Create Tool"
+          description="Forge a new tool"
+          icon={Wrench}
+          color="bg-amber-600"
+        />
+        <QuickActionCard
+          title="Self Reflect"
+          description="Analyze performance"
+          icon={Sparkles}
+          color="bg-emerald-600"
+        />
+      </div>
+
+      {/* Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-slate-300">Recent Memories</h3>
+          <MemoryPanel />
+        </div>
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-slate-300">Available Tools</h3>
+          <ToolPanel />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Quick action card
+function QuickActionCard({
+  title,
+  description,
+  icon: Icon,
+  color
+}: {
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  color: string;
+}) {
+  return (
+    <button className="flex items-start gap-3 p-4 rounded-lg bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-all text-left group">
+      <div className={cn('p-2 rounded-lg', color)}>
+        <Icon className="h-4 w-4 text-white" />
+      </div>
+      <div>
+        <h4 className="font-medium text-slate-200 group-hover:text-indigo-400 transition-colors">
+          {title}
+        </h4>
+        <p className="text-xs text-slate-400">{description}</p>
+      </div>
+    </button>
+  );
+}
+
+// Chat view
+function ChatView() {
+  return (
+    <div className="h-[calc(100vh-180px)]">
+      <AgentChat />
+    </div>
+  );
+}
+
+// Skills view
+function SkillsView() {
+  return (
+    <div className="h-[calc(100vh-180px)]">
+      <SkillPanel />
+    </div>
+  );
+}
+
+// Tools view
+function ToolsView() {
+  return (
+    <div className="h-[calc(100vh-180px)]">
+      <ToolPanel />
+    </div>
+  );
+}
+
+// Memory view
+function MemoryView() {
+  return (
+    <div className="h-[calc(100vh-180px)]">
+      <MemoryPanel />
+    </div>
+  );
+}
+
+// Settings view
+function SettingsView() {
+  return (
+    <div className="space-y-6">
+      <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-slate-100 mb-4">Agent Configuration</h3>
+        
+        <div className="space-y-4">
+          <SettingRow
+            label="Primary Model"
+            value="Claude 3.5 Sonnet"
+            description="Main LLM for reasoning and responses"
+          />
+          <SettingRow
+            label="Utility Model"
+            value="GPT-4o-mini"
+            description="Model for summarization and utility tasks"
+          />
+          <SettingRow
+            label="Dream Cycle Interval"
+            value="30 minutes"
+            description="Time between background processing cycles"
+          />
+          <SettingRow
+            label="Memory Limit"
+            value="100 entries"
+            description="Maximum number of memories to retain"
+          />
+        </div>
+      </div>
+
+      <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-slate-100 mb-4">Behavior Rules</h3>
+        
+        <div className="space-y-3">
+          <BehaviorRule
+            rule="Always verify tool outputs before presenting results to the user"
+            category="accuracy"
+          />
+          <BehaviorRule
+            rule="Break complex tasks into smaller subtasks and track progress"
+            category="execution"
+          />
+          <BehaviorRule
+            rule="Save useful solutions and patterns to memory for future reference"
+            category="learning"
+          />
+          <BehaviorRule
+            rule="Be transparent about reasoning steps and tool usage"
+            category="transparency"
+          />
+        </div>
+      </div>
+
+      <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-slate-100 mb-4">System Status</h3>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <StatusCard label="API Status" status="online" />
+          <StatusCard label="Memory System" status="online" />
+          <StatusCard label="Tool Registry" status="online" />
+          <StatusCard label="Vector Store" status="online" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Setting row component
+function SettingRow({
+  label,
+  value,
+  description
+}: {
+  label: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <div className="flex items-center justify-between py-3 border-b border-slate-700 last:border-0">
+      <div>
+        <p className="font-medium text-slate-200">{label}</p>
+        <p className="text-xs text-slate-400">{description}</p>
+      </div>
+      <Badge variant="outline" className="border-slate-600 text-slate-300">
+        {value}
+      </Badge>
+    </div>
+  );
+}
+
+// Behavior rule component
+function BehaviorRule({
+  rule,
+  category
+}: {
+  rule: string;
+  category: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 p-3 bg-slate-900/50 rounded-lg">
+      <ChevronRight className="h-4 w-4 text-indigo-400 mt-0.5 shrink-0" />
+      <div>
+        <p className="text-sm text-slate-300">{rule}</p>
+        <Badge variant="outline" className="text-xs mt-2 border-slate-600 text-slate-400">
+          {category}
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
+// Status card component
+function StatusCard({
+  label,
+  status
+}: {
+  label: string;
+  status: 'online' | 'offline' | 'degraded';
+}) {
+  return (
+    <div className="flex items-center gap-2 p-3 bg-slate-900/50 rounded-lg">
+      <div className={cn(
+        'w-2 h-2 rounded-full',
+        status === 'online' && 'bg-emerald-500',
+        status === 'offline' && 'bg-red-500',
+        status === 'degraded' && 'bg-amber-500'
+      )} />
+      <span className="text-sm text-slate-300">{label}</span>
+    </div>
+  );
+}
+
+// Mobile navigation
+function MobileNav({
+  activeTab,
+  setActiveTab
+}: {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+}) {
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 border-t border-slate-700 z-50 lg:hidden">
+      <div className="flex justify-around py-2">
+        {navItems.slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
+          return (
+            <Button
+              key={item.id}
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'flex-col gap-1 h-auto py-2',
+                isActive ? 'text-indigo-400' : 'text-slate-400'
+              )}
+              onClick={() => setActiveTab(item.id)}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-xs">{item.label}</span>
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Main page component
+export default function NexusPage() {
+  const [activeTab, setActiveTab] = React.useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <DashboardView />;
+      case 'chat':
+        return <ChatView />;
+      case 'skills':
+        return <SkillsView />;
+      case 'tools':
+        return <ToolsView />;
+      case 'memory':
+        return <MemoryView />;
+      case 'settings':
+        return <SettingsView />;
+      default:
+        return <DashboardView />;
+    }
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/30">
+      {/* Desktop Sidebar */}
+      <div className="hidden lg:flex">
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          collapsed={sidebarCollapsed}
+          setCollapsed={setSidebarCollapsed}
+        />
+      </div>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-hidden">
+        {/* Mobile Header */}
+        <div className="lg:hidden flex items-center justify-between p-4 border-b border-slate-700/50 bg-slate-900/80">
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Bot className="h-6 w-6 text-indigo-400" />
+              <Sparkles className="h-3 w-3 text-purple-400 absolute -top-1 -right-1" />
+            </div>
+            <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+              NEXUS
+            </h1>
+          </div>
+          <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+            Online
+          </Badge>
+        </div>
+
+        {/* Content Area */}
+        <ScrollArea className="h-[calc(100vh-80px)] lg:h-screen p-4 lg:p-6 pb-24 lg:pb-6">
+          {/* Page Header */}
+          <div className="mb-6">
+            <div className="flex items-center gap-2 text-slate-400 mb-2">
+              <Terminal className="h-4 w-4" />
+              <span className="text-sm font-mono">nexus://{activeTab}</span>
+            </div>
+            <h2 className="text-2xl font-bold text-slate-100">
+              {navItems.find(n => n.id === activeTab)?.label || 'Dashboard'}
+            </h2>
+          </div>
+
+          {/* Dynamic Content */}
+          {renderContent()}
+        </ScrollArea>
+      </main>
+
+      {/* Mobile Navigation */}
+      <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
+    </div>
+  );
 }
