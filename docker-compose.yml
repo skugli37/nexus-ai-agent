@@ -1,0 +1,168 @@
+# ============================================================================
+# NEXUS AI Agent - Docker Compose Configuration
+# ============================================================================
+# Production-ready deployment configuration
+#
+# Usage:
+#   docker-compose up -d           # Start all services
+#   docker-compose up -d --build   # Rebuild and start
+#   docker-compose down            # Stop all services
+#   docker-compose logs -f         # View logs
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # NEXUS Backend - Main Agent Server
+  # ===========================================================================
+  nexus-backend:
+    build:
+      context: ./nexus
+      dockerfile: docker/agent-full/Dockerfile
+    container_name: nexus-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+      - "${WS_PORT:-3002}:3002"
+    environment:
+      - NEXUS_HOME=/app/.nexus
+      - NEXUS_PRIMARY_MODEL=${NEXUS_PRIMARY_MODEL:-claude-3-5-sonnet}
+      - NEXUS_UTILITY_MODEL=${NEXUS_UTILITY_MODEL:-gpt-4o-mini}
+      - NEXUS_MAX_TOKENS=${NEXUS_MAX_TOKENS:-4096}
+      - NEXUS_DEBUG=${NEXUS_DEBUG:-false}
+      - NODE_ENV=production
+    volumes:
+      - nexus-data:/app/.nexus
+      - nexus-sandbox:/app/sandbox
+      - nexus-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - nexus-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # NEXUS Frontend - Web UI
+  # ===========================================================================
+  nexus-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: nexus-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://nexus-backend:3001
+      - NEXT_PUBLIC_WS_URL=ws://nexus-backend:3002
+      - NODE_ENV=production
+    depends_on:
+      nexus-backend:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # Redis - Caching Layer (Optional)
+  # ===========================================================================
+  nexus-redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - full
+
+  # ===========================================================================
+  # PostgreSQL - Persistent Storage (Optional)
+  # ===========================================================================
+  nexus-db:
+    image: postgres:16-alpine
+    container_name: nexus-db
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${DB_USER:-nexus}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-nexus_secret}
+      - POSTGRES_DB=${DB_NAME:-nexus}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-nexus} -d ${DB_NAME:-nexus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - full
+
+  # ===========================================================================
+  # Nginx - Reverse Proxy (Production)
+  # ===========================================================================
+  nexus-proxy:
+    image: nginx:alpine
+    container_name: nexus-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - nexus-frontend
+      - nexus-backend
+    networks:
+      - nexus-network
+    profiles:
+      - production
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  nexus-network:
+    driver: bridge
+    name: nexus-network
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  nexus-data:
+    name: nexus-data
+  nexus-sandbox:
+    name: nexus-sandbox
+  nexus-logs:
+    name: nexus-logs
+  redis-data:
+    name: nexus-redis-data
+  postgres-data:
+    name: nexus-postgres-data
