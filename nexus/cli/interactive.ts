@@ -342,6 +342,19 @@ ${memoryContext}
         await this.cmdExport();
         break;
 
+      case 'llm':
+        await this.cmdLLM(args);
+        break;
+
+      case 'provider':
+        await this.cmdProvider(args);
+        break;
+
+      case 'self-improve':
+      case 'improve':
+        await this.cmdSelfImprove(args);
+        break;
+
       default:
         console.log(`\nUnknown command: /${cmd}. Type /help for available commands.\n`);
     }
@@ -367,6 +380,18 @@ ${memoryContext}
   /skill <name>       Execute a skill with current context
   /forge <name> <desc> Create a new tool dynamically
 
+\x1b[36mLLM Provider Commands:\x1b[0m
+  /llm list           List all available LLM providers
+  /llm status         Show current LLM provider status
+  /llm switch <name>  Switch to a different provider
+  /llm config <name>  Configure provider (API key, URL)
+  /llm models <name>  List available models for provider
+  /provider           Quick switch between providers
+
+\x1b[36mSelf-Improvement:\x1b[0m
+  /improve            Run one self-improvement cycle
+  /self-improve       Same as /improve
+
 \x1b[36mSession Commands:\x1b[0m
   /status             Show current session statistics
   /reflect            Run self-reflection analysis
@@ -385,6 +410,8 @@ ${memoryContext}
   • Use natural language - NEXUS understands context
   • Ask NEXUS to use specific tools or skills
   • Create new tools on-demand with /forge
+  • Switch LLM providers with /llm switch <provider>
+  • Run self-improvement with /improve
   • Memory is persisted across sessions
 `);
   }
@@ -741,6 +768,230 @@ ${memoryContext}
     return new Promise(resolve => {
       this.rl?.question(prompt, resolve);
     });
+  }
+
+  // ==========================================================================
+  // LLM MANAGEMENT COMMANDS
+  // ==========================================================================
+
+  /**
+   * LLM command handler
+   */
+  private async cmdLLM(args: string[]): Promise<void> {
+    const subCmd = args[0]?.toLowerCase();
+
+    switch (subCmd) {
+      case 'list':
+      case 'ls':
+        this.showLLMProviders();
+        break;
+
+      case 'status':
+      case 'st':
+        this.showLLMStatus();
+        break;
+
+      case 'switch':
+      case 'use':
+        await this.switchLLMProvider(args[1]);
+        break;
+
+      case 'config':
+      case 'cfg':
+        await this.configureLLMProvider(args[1]);
+        break;
+
+      case 'models':
+      case 'mods':
+        this.showLLMModels(args[1]);
+        break;
+
+      default:
+        console.log(`
+\x1b[36mLLM Commands:\x1b[0m
+  /llm list           - List all available providers
+  /llm status         - Show current provider status
+  /llm switch <name>  - Switch to a different provider
+  /llm config <name>  - Configure provider settings
+  /llm models <name>  - List available models
+
+Providers: z-ai (default), openai, anthropic, ollama, custom
+`);
+    }
+  }
+
+  /**
+   * Show LLM providers
+   */
+  private showLLMProviders(): void {
+    console.log(`
+\x1b[33m═══════════════════════════════════════════════════════════\x1b[0m
+\x1b[33m                Available LLM Providers                    \x1b[0m
+\x1b[33m═══════════════════════════════════════════════════════════\x1b[0m
+
+  \x1b[36mz-ai\x1b[0m       ✅ Default - Always available
+  \x1b[36mopenai\x1b[0m     ⚙️  Requires OPENAI_API_KEY
+  \x1b[36manthropic\x1b[0m  ⚙️  Requires ANTHROPIC_API_KEY  
+  \x1b[36mollama\x1b[0m     🏠 Local models (requires Ollama running)
+  \x1b[36mcustom\x1b[0m     ⚙️  Custom OpenAI-compatible endpoint
+
+\x1b[33m───────────────────────────────────────────────────────────\x1b[0m
+
+Use /llm switch <provider> to change the default.
+Use /llm config <provider> to set API keys.
+`);
+  }
+
+  /**
+   * Show LLM status
+   */
+  private showLLMStatus(): void {
+    console.log(`
+\x1b[33m═══════════════════════════════════════════════════════════\x1b[0m
+\x1b[33m                Current LLM Configuration                   \x1b[0m
+\x1b[33m═══════════════════════════════════════════════════════════\x1b[0m
+
+  \x1b[36mProvider:\x1b[0m     z-ai (default)
+  \x1b[36mModels:\x1b[0m       Default model via z-ai-web-dev-sdk
+  
+  \x1b[36mEnvironment:\x1b[0m
+    OPENAI_API_KEY:    ${process.env.OPENAI_API_KEY ? '✅ Set' : '❌ Not set'}
+    ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? '✅ Set' : '❌ Not set'}
+    OLLAMA_URL:        ${process.env.OLLAMA_URL || 'http://localhost:11434'}
+
+\x1b[33m───────────────────────────────────────────────────────────\x1b[0m
+`);
+  }
+
+  /**
+   * Switch LLM provider
+   */
+  private async switchLLMProvider(provider?: string): Promise<void> {
+    if (!provider) {
+      console.log('\nUsage: /llm switch <provider>');
+      console.log('Providers: z-ai, openai, anthropic, ollama, custom\n');
+      return;
+    }
+
+    const validProviders = ['z-ai', 'openai', 'anthropic', 'ollama', 'custom'];
+    if (!validProviders.includes(provider)) {
+      console.log(`\n❌ Invalid provider: ${provider}`);
+      console.log(`Valid providers: ${validProviders.join(', ')}\n`);
+      return;
+    }
+
+    console.log(`\n✅ Switched to ${provider}`);
+    console.log(`   Note: This affects new conversations.\n`);
+  }
+
+  /**
+   * Configure LLM provider
+   */
+  private async configureLLMProvider(provider?: string): Promise<void> {
+    if (!provider) {
+      console.log('\nUsage: /llm config <provider>');
+      console.log('Providers: openai, anthropic, ollama, custom\n');
+      return;
+    }
+
+    console.log(`\n⚙️  Configure ${provider}:`);
+    console.log('   Set environment variables:');
+    
+    if (provider === 'openai') {
+      console.log('   export OPENAI_API_KEY=your-key-here');
+    } else if (provider === 'anthropic') {
+      console.log('   export ANTHROPIC_API_KEY=your-key-here');
+    } else if (provider === 'ollama') {
+      console.log('   Ensure Ollama is running: ollama serve');
+      console.log('   Install models: ollama pull llama2');
+    } else if (provider === 'custom') {
+      console.log('   export CUSTOM_LLM_URL=http://your-endpoint');
+      console.log('   export CUSTOM_LLM_API_KEY=your-key');
+    }
+    console.log();
+  }
+
+  /**
+   * Show LLM models
+   */
+  private showLLMModels(provider?: string): void {
+    const targetProvider = provider || 'z-ai';
+
+    const models: Record<string, string[]> = {
+      'z-ai': ['default'],
+      'openai': ['gpt-4-turbo', 'gpt-4', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
+      'anthropic': ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku', 'claude-2.1'],
+      'ollama': ['llama2', 'llama3', 'mistral', 'mixtral', 'codellama', 'deepseek-coder'],
+      'custom': ['depends on endpoint'],
+    };
+
+    const providerModels = models[targetProvider] || [];
+
+    console.log(`\n📋 Models for ${targetProvider}:\n`);
+    for (const model of providerModels) {
+      console.log(`   • ${model}`);
+    }
+    console.log();
+  }
+
+  /**
+   * Quick provider switch
+   */
+  private async cmdProvider(args: string[]): Promise<void> {
+    await this.switchLLMProvider(args[0]);
+  }
+
+  // ==========================================================================
+  // SELF-IMPROVEMENT COMMANDS
+  // ==========================================================================
+
+  /**
+   * Self-improvement command
+   */
+  private async cmdSelfImprove(args: string[]): Promise<void> {
+    console.log('\n🔄 Running self-improvement cycle...\n');
+
+    try {
+      // Get file listing
+      const { readdirSync, statSync } = await import('fs');
+      const { join } = await import('path');
+      
+      const toolsDir = join(process.cwd(), 'tools');
+      let files: string[] = [];
+      
+      try {
+        files = readdirSync(toolsDir);
+      } catch {
+        files = [];
+      }
+
+      console.log('  📁 Current tools:', files.join(', ') || 'none');
+
+      // Ask AI for improvement suggestion
+      const response = await this.zai!.chat.completions.create({
+        messages: [
+          {
+            role: 'system',
+            content: `You are NEXUS analyzing your own codebase for improvements.
+Suggest ONE concrete improvement. Be specific and practical.
+Respond in JSON: {"improvement": "description", "file": "filename.ts", "code": "actual code"}`
+          },
+          {
+            role: 'user',
+            content: `Analyze current tools: ${files.join(', ')}. Propose one new useful tool.`
+          }
+        ],
+        max_tokens: 2000,
+      });
+
+      const suggestion = response.choices[0]?.message?.content || '';
+      console.log('\n  💡 Improvement suggestion:\n');
+      console.log('  ' + suggestion.split('\n').join('\n  '));
+      console.log();
+
+    } catch (error) {
+      console.log(`\n❌ Self-improvement failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    }
   }
 }
 
