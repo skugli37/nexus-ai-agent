@@ -1,44 +1,63 @@
 /**
  * NEXUS API - Status Endpoint
- * Returns current agent state, metrics, memories, skills, and tools
- * NO DEFAULTS - All data loaded from filesystem
+ * Returns REAL agent state using REAL core modules
  */
 
 import { NextResponse } from 'next/server';
 import {
+  getAgent,
   getSystemMetrics,
-  loadToolsFromFS,
-  loadSkillsFromFS,
-  loadMemoriesFromFS,
-  loadAgentState,
-  loadAgentMetrics
-} from '@/lib/nexus-core';
+  listTools,
+  listSkills,
+  getAllMemories
+} from '@/lib/nexus-bridge';
 
 export async function GET() {
   try {
-    // Load all data in parallel
-    const [systemMetrics, tools, skills, memories, state, metrics] = await Promise.all([
-      getSystemMetrics(),
-      loadToolsFromFS(),
-      loadSkillsFromFS(),
-      loadMemoriesFromFS(),
-      Promise.resolve(loadAgentState()),
-      Promise.resolve(loadAgentMetrics())
-    ]);
+    // Get REAL agent
+    const agent = await getAgent();
+    const state = agent.getState();
     
-    // Calculate memory stats from real data
-    const byType: Record<string, number> = {};
+    // Get REAL metrics
+    const metrics = state.metrics;
+    
+    // Get REAL system metrics
+    const systemMetrics = await getSystemMetrics();
+    
+    // Get REAL tools
+    const tools = await listTools();
+    
+    // Get REAL skills
+    const skills = await listSkills();
+    
+    // Get REAL memories
+    const memories = await getAllMemories();
+    
+    // Calculate memory stats
+    const memoryByType: Record<string, number> = {};
     for (const memory of memories) {
-      byType[memory.type] = (byType[memory.type] || 0) + 1;
+      memoryByType[memory.type] = (memoryByType[memory.type] || 0) + 1;
     }
     
     return NextResponse.json({
-      state,
-      metrics,
+      state: {
+        status: state.status,
+        phase: state.phase,
+        sessionId: state.sessionId,
+        lastActivity: state.lastActivity?.toISOString() || new Date().toISOString()
+      },
+      metrics: {
+        tasksCompleted: metrics?.tasksCompleted || 0,
+        tasksFailed: metrics?.tasksFailed || 0,
+        averageResponseTime: metrics?.averageResponseTime || 0,
+        totalTokensUsed: metrics?.totalTokensUsed || 0,
+        dreamCyclesCompleted: metrics?.dreamCyclesCompleted || 0,
+        learningIterations: metrics?.learningIterations || 0
+      },
       memories: memories.slice(-20),
       memoryStats: {
         total: memories.length,
-        byType
+        byType: memoryByType
       },
       systemMetrics,
       skills,
@@ -47,7 +66,7 @@ export async function GET() {
   } catch (error) {
     console.error('Status error:', error);
     
-    // Return empty data on error - NO DEFAULTS
+    // Return partial data on error
     return NextResponse.json({
       state: {
         status: 'error',
@@ -66,10 +85,11 @@ export async function GET() {
       memories: [],
       memoryStats: { total: 0, byType: {} },
       systemMetrics: {
-        memoryUsage: 0,
+        memoryUsage: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
         toolsCount: 0,
         skillsCount: 0,
-        pipelinesCount: 0
+        pipelinesCount: 0,
+        uptime: process.uptime()
       },
       skills: [],
       tools: [],

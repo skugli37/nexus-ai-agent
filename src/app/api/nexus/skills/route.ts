@@ -1,33 +1,32 @@
 /**
  * NEXUS API - Skills Endpoint
- * CRUD operations for NEXUS skills
- * NO DEFAULTS - All skills loaded from filesystem
+ * Uses REAL skill files from filesystem
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'fs';
+import { listSkills } from '@/lib/nexus-bridge';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, rmSync } from 'fs';
 import { join } from 'path';
-import { getNexusHome, loadSkillsFromFS, Skill } from '@/lib/nexus-core';
+import { getNexusHome } from '@/lib/nexus-bridge';
 
-// Get all skills - NO DEFAULTS
+// List all skills
 export async function GET() {
-  const skills = await loadSkillsFromFS();
-  return NextResponse.json({ skills });
+  try {
+    const skills = await listSkills();
+    return NextResponse.json({ skills });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to list skills' },
+      { status: 500 }
+    );
+  }
 }
 
-// Create/install new skill
+// Create new skill
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, tags, action } = body;
-    
-    if (action === 'install') {
-      // Install skill (would normally fetch from ClawHub)
-      return NextResponse.json({
-        success: false,
-        error: 'ClawHub integration not yet configured'
-      });
-    }
+    const { name, description, tags, content } = body;
     
     if (!name) {
       return NextResponse.json(
@@ -46,10 +45,11 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Create skill directory and SKILL.md
+    // Create skill directory
     mkdirSync(skillDir, { recursive: true });
     
-    const skillContent = `---
+    // Create SKILL.md file
+    const skillContent = content || `---
 name: ${name}
 description: ${description || 'Custom skill'}
 version: 1.0.0
@@ -79,21 +79,18 @@ Use ${name} to accomplish the task.
     
     writeFileSync(join(skillDir, 'SKILL.md'), skillContent);
     
-    const newSkill: Skill = {
-      name,
-      description: description || '',
-      version: '1.0.0',
-      tags: tags || [],
-      installed: true,
-      author: 'Local'
-    };
-    
     return NextResponse.json({
       success: true,
-      skill: newSkill
+      skill: {
+        name,
+        description: description || '',
+        version: '1.0.0',
+        tags: tags || [],
+        installed: true,
+        author: 'Local'
+      }
     });
   } catch (error) {
-    console.error('Failed to create skill:', error);
     return NextResponse.json(
       { error: 'Failed to create skill', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -101,7 +98,7 @@ Use ${name} to accomplish the task.
   }
 }
 
-// Delete/uninstall skill
+// Delete skill
 export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
@@ -129,12 +126,11 @@ export async function DELETE(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      message: `Skill '${name}' uninstalled successfully`
+      message: `Skill '${name}' uninstalled`
     });
   } catch (error) {
-    console.error('Failed to delete skill:', error);
     return NextResponse.json(
-      { error: 'Failed to delete skill', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to delete skill' },
       { status: 500 }
     );
   }
