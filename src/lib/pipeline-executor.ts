@@ -1,11 +1,9 @@
 /**
  * NEXUS Pipeline Executor
- * Real implementation for executing build pipelines
- * 
- * This is a standalone implementation for the Web API that doesn't depend on core modules
+ * Real implementation using core modules
  */
 
-import { getNexusHome } from './nexus-core';
+import { getNexusHome, getSandbox } from './nexus-bridge';
 
 // Node types
 export type NodeType = 
@@ -147,32 +145,27 @@ async function executeNode(node: PipelineNode): Promise<NodeResult> {
           throw new Error('Code script is required');
         }
         
-        // Safe execution in sandboxed context
-        const logs: string[] = [];
-        const sandbox = {
-          console: { log: (...args: unknown[]) => logs.push(args.map(a => String(a)).join(' ')) },
-          setTimeout,
-          clearTimeout,
-          JSON,
-          Object,
-          Array,
-          Math,
-          Date
-        };
-        
         try {
-          const fn = new Function(...Object.keys(sandbox), script);
-          const result = fn(...Object.values(sandbox));
+          // Use REAL CodeSandbox from core
+          const sandbox = await getSandbox();
+          const result = await sandbox.execute(script, node.config.inputs as Record<string, unknown> || {});
+          
           outputs = { 
             language,
-            result: result !== undefined ? result : 'Code executed successfully',
-            logs
+            result: result.output,
+            logs: result.logs,
+            duration: result.duration,
+            success: result.success
           };
+          
+          if (!result.success) {
+            throw new Error(result.error || 'Code execution failed');
+          }
         } catch (codeError) {
           outputs = { 
             language,
             error: codeError instanceof Error ? codeError.message : 'Code execution failed',
-            logs
+            logs: []
           };
         }
         break;

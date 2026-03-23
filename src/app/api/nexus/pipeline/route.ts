@@ -1,14 +1,13 @@
 /**
  * NEXUS API - Pipeline Endpoint
- * Execute build pipelines using real PipelineExecutor
- * NO MOCK - Real execution with real results
+ * Uses REAL PipelineExecutor from core
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { executePipeline } from '@/lib/pipeline-executor';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import { join } from 'path';
-import { getNexusHome } from '@/lib/nexus-core';
-import { executePipeline, type PipelineResult } from '@/lib/pipeline-executor';
+import { getNexusHome } from '@/lib/nexus-bridge';
 
 // Get all saved pipelines
 export async function GET() {
@@ -37,7 +36,7 @@ export async function GET() {
   return NextResponse.json({ pipelines });
 }
 
-// Execute pipeline
+// Execute pipeline using REAL executor
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -50,8 +49,8 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Execute using REAL PipelineExecutor
-    const result: PipelineResult = await executePipeline(
+    // Execute using REAL pipeline executor
+    const result = await executePipeline(
       name || 'Untitled Pipeline',
       nodes.map((n: { id: string; type: string; name: string; config: Record<string, unknown> }) => ({
         id: n.id,
@@ -69,24 +68,20 @@ export async function POST(request: NextRequest) {
         mkdirSync(pipelinesDir, { recursive: true });
       }
       
-      const pipelineData = {
-        id: result.pipelineId,
-        name: name || 'Untitled Pipeline',
-        nodes,
-        connections: connections || [],
-        createdAt: new Date().toISOString(),
-        lastExecution: {
-          executionId: result.executionId,
-          success: result.success,
-          totalExecutionTime: result.totalExecutionTime,
-          nodeCount: nodes.length,
-          failedNodes: result.failedNodeIds.length
-        }
-      };
-      
       writeFileSync(
         join(pipelinesDir, `${result.pipelineId}.json`),
-        JSON.stringify(pipelineData, null, 2)
+        JSON.stringify({
+          id: result.pipelineId,
+          name: name || 'Untitled Pipeline',
+          nodes,
+          connections: connections || [],
+          createdAt: new Date().toISOString(),
+          lastExecution: {
+            executionId: result.executionId,
+            success: result.success,
+            totalExecutionTime: result.totalExecutionTime
+          }
+        }, null, 2)
       );
     }
     
@@ -95,10 +90,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Pipeline execution error:', error);
     return NextResponse.json(
-      { 
-        error: 'Pipeline execution failed', 
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
+      { error: 'Pipeline execution failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
@@ -111,10 +103,7 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
     
     if (!id) {
-      return NextResponse.json(
-        { error: 'Pipeline ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Pipeline ID is required' }, { status: 400 });
     }
     
     const pipelinePath = join(getNexusHome(), 'pipelines', `${id}.json`);
@@ -126,7 +115,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true, message: `Pipeline ${id} deleted` });
   } catch (error) {
     return NextResponse.json(
-      { error: 'Failed to delete pipeline', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to delete pipeline' },
       { status: 500 }
     );
   }
