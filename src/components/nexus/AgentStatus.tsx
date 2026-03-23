@@ -155,6 +155,14 @@ function CurrentTaskCard({ task }: { task: CurrentTask | null }) {
   );
 }
 
+// System metrics from API
+interface SystemMetrics {
+  memoryUsage: number;
+  toolsCount: number;
+  skillsCount: number;
+  pipelinesCount: number;
+}
+
 // Main AgentStatus component
 export function AgentStatus() {
   const [state, setState] = React.useState<AgentState>({
@@ -171,17 +179,24 @@ export function AgentStatus() {
     dreamCyclesCompleted: 0,
     learningIterations: 0
   });
+  const [systemMetrics, setSystemMetrics] = React.useState<SystemMetrics>({
+    memoryUsage: 0,
+    toolsCount: 0,
+    skillsCount: 0,
+    pipelinesCount: 0
+  });
   const [currentTask, setCurrentTask] = React.useState<CurrentTask | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
-  // Fetch status data
+  // Fetch status data - REAL DATA ONLY
   const fetchStatus = React.useCallback(async () => {
     try {
       const response = await fetch('/api/nexus/status');
       if (response.ok) {
         const data = await response.json();
-        setState(data.state);
-        setMetrics(data.metrics);
+        setState(data.state || { status: 'idle', phase: 'conscious', sessionId: null, lastActivity: new Date().toISOString() });
+        setMetrics(data.metrics || { tasksCompleted: 0, tasksFailed: 0, averageResponseTime: 0, totalTokensUsed: 0, dreamCyclesCompleted: 0, learningIterations: 0 });
+        setSystemMetrics(data.systemMetrics || { memoryUsage: 0, toolsCount: 0, skillsCount: 0, pipelinesCount: 0 });
       }
     } catch (error) {
       console.error('Failed to fetch status:', error);
@@ -291,7 +306,7 @@ export function AgentStatus() {
         <CurrentTaskCard task={currentTask} />
       </div>
 
-      {/* Memory & Tools Quick Stats */}
+      {/* Memory & Tools Quick Stats - REAL DATA */}
       <div className="grid grid-cols-2 gap-4">
         <Card className="bg-slate-800/50 border-slate-700">
           <CardContent className="p-4">
@@ -301,7 +316,7 @@ export function AgentStatus() {
               </div>
               <div>
                 <p className="text-xs text-slate-400">Memory Usage</p>
-                <p className="text-lg font-bold text-slate-100">128 MB</p>
+                <p className="text-lg font-bold text-slate-100">{systemMetrics.memoryUsage} MB</p>
               </div>
             </div>
           </CardContent>
@@ -314,7 +329,7 @@ export function AgentStatus() {
               </div>
               <div>
                 <p className="text-xs text-slate-400">Tools Available</p>
-                <p className="text-lg font-bold text-slate-100">12</p>
+                <p className="text-lg font-bold text-slate-100">{systemMetrics.toolsCount}</p>
               </div>
             </div>
           </CardContent>

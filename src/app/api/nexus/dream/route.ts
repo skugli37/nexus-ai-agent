@@ -89,7 +89,7 @@ Output JSON array of 1-3 consolidated entries with "content" field.`
           for (const entry of parsed) {
             if (entry.content) {
               memories.push({
-                id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                id: crypto.randomUUID(),
                 content: entry.content,
                 type: 'main',
                 timestamp: new Date().toISOString()
@@ -134,7 +134,7 @@ Output concise markdown analysis.`
       
       if (analysisResult.length > 50) {
         memories.push({
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          id: crypto.randomUUID(),
           content: `Dream Analysis: ${analysisResult.slice(0, 500)}`,
           type: 'solution',
           timestamp: new Date().toISOString()

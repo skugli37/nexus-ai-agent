@@ -359,30 +359,63 @@ export function PipelineBuilderUI() {
     };
   }, [isDragging, selectedNode, dragOffset]);
 
-  // Run pipeline
+  // Run pipeline - REAL EXECUTION (no simulation)
   const runPipeline = async () => {
+    if (nodes.length === 0) return;
+    
     setIsRunning(true);
     
     // Reset all node statuses
     setNodes(nodes.map(n => ({ ...n, status: 'pending' as const })));
 
-    // Simulate execution
-    for (let i = 0; i < nodes.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setNodes(prev => prev.map((n, idx) => 
-        idx === i ? { ...n, status: 'running' as const } : n
-      ));
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Random success/fail for demo
-      const success = Math.random() > 0.2;
-      setNodes(prev => prev.map((n, idx) => 
-        idx === i ? { ...n, status: success ? 'completed' as const : 'failed' as const } : n
-      ));
-    }
+    try {
+      const response = await fetch('/api/nexus/pipeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: pipelineName,
+          nodes: nodes.map(n => ({
+            id: n.id,
+            type: n.type,
+            name: n.name,
+            config: n.config,
+            x: n.x,
+            y: n.y
+          })),
+          connections: connections.map(c => ({
+            id: c.id,
+            sourceId: c.sourceId,
+            targetId: c.targetId,
+            sourcePort: 'output',
+            targetPort: 'input'
+          })),
+          save: false
+        })
+      });
 
-    setIsRunning(false);
+      if (!response.ok) {
+        throw new Error('Pipeline execution failed');
+      }
+
+      const result = await response.json();
+      
+      // Update node statuses based on REAL results
+      for (const nodeResult of result.nodeResults || []) {
+        setNodes(prev => prev.map(n => 
+          n.id === nodeResult.nodeId 
+            ? { ...n, status: nodeResult.success ? 'completed' as const : 'failed' as const }
+            : n
+        ));
+      }
+    } catch (error) {
+      console.error('Pipeline execution error:', error);
+      // Mark all pending nodes as failed
+      setNodes(prev => prev.map(n => 
+        n.status === 'pending' ? { ...n, status: 'failed' as const } : n
+      ));
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   // Save pipeline

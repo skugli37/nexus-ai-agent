@@ -159,75 +159,13 @@ function ToolCard({ tool, onToggle, onEdit, onDelete }: {
   );
 }
 
-// Default tools data
-const defaultTools: Tool[] = [
-  {
-    id: 'code_execution',
-    name: 'code_execution',
-    description: 'Execute Python, JavaScript, or shell commands in a sandboxed environment',
-    category: 'execution',
-    parameters: [
-      { name: 'code', type: 'string', description: 'Code to execute', required: true },
-      { name: 'runtime', type: 'string', description: 'Runtime to use', required: true }
-    ],
-    enabled: true,
-    usageCount: 127
-  },
-  {
-    id: 'memorize',
-    name: 'memorize',
-    description: 'Store and retrieve information from persistent memory',
-    category: 'memory',
-    parameters: [
-      { name: 'content', type: 'string', description: 'Content to store', required: true },
-      { name: 'area', type: 'string', description: 'Memory area', required: false }
-    ],
-    enabled: true,
-    usageCount: 89
-  },
-  {
-    id: 'web_search',
-    name: 'web_search',
-    description: 'Search the web for information',
-    category: 'web',
-    parameters: [
-      { name: 'query', type: 'string', description: 'Search query', required: true }
-    ],
-    enabled: true,
-    usageCount: 45
-  },
-  {
-    id: 'browser_action',
-    name: 'browser_action',
-    description: 'Control a headless browser for web automation',
-    category: 'web',
-    parameters: [
-      { name: 'action', type: 'string', description: 'Action to perform', required: true },
-      { name: 'url', type: 'string', description: 'URL to navigate', required: false }
-    ],
-    enabled: true,
-    usageCount: 23
-  },
-  {
-    id: 'response',
-    name: 'response',
-    description: 'Send a response to the user',
-    category: 'system',
-    parameters: [
-      { name: 'message', type: 'string', description: 'Response message', required: true }
-    ],
-    enabled: true,
-    usageCount: 312
-  }
-];
-
-// Main ToolPanel component
+// Main ToolPanel component - NO DEFAULTS
 export function ToolPanel() {
-  const [tools, setTools] = React.useState<Tool[]>(defaultTools);
+  const [tools, setTools] = React.useState<Tool[]>([]); // Start empty
   const [searchQuery, setSearchQuery] = React.useState('');
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [editingTool, setEditingTool] = React.useState<Tool | null>(null);
-  const [isLoading, setIsLoading] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   // Filter tools by search
   const filteredTools = tools.filter(tool =>
@@ -236,18 +174,20 @@ export function ToolPanel() {
     tool.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Fetch tools from API
+  // Fetch tools from API - NO DEFAULTS
   const fetchTools = React.useCallback(async () => {
+    setIsLoading(true);
     try {
       const response = await fetch('/api/nexus/tools');
       if (response.ok) {
         const data = await response.json();
-        if (data.tools && data.tools.length > 0) {
-          setTools(data.tools);
-        }
+        setTools(data.tools || []); // Use only API data
       }
     } catch (error) {
       console.error('Failed to fetch tools:', error);
+      setTools([]); // Empty on error
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 

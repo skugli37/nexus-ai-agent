@@ -47,103 +47,7 @@ interface Skill {
   downloads?: number;
 }
 
-// Default skills data
-const defaultSkills: Skill[] = [
-  {
-    name: 'code_execution',
-    description: 'Execute Python, JavaScript, and shell commands in a sandboxed environment with real-time output streaming',
-    version: '2.0.0',
-    tags: ['execution', 'code', 'python', 'javascript', 'shell'],
-    installed: true,
-    author: 'NEXUS Core',
-    rating: 4.9,
-    downloads: 15234
-  },
-  {
-    name: 'web_search',
-    description: 'Search the web for information with support for multiple search engines and advanced query operators',
-    version: '1.5.0',
-    tags: ['web', 'search', 'information'],
-    installed: true,
-    author: 'NEXUS Core',
-    rating: 4.7,
-    downloads: 12845
-  },
-  {
-    name: 'memory_crystal',
-    description: 'Advanced memory management with semantic search, importance scoring, and automatic consolidation',
-    version: '3.1.0',
-    tags: ['memory', 'storage', 'semantic'],
-    installed: true,
-    author: 'NEXUS Core',
-    rating: 4.8,
-    downloads: 9876
-  },
-  {
-    name: 'dream_cycle',
-    description: 'Background processing for knowledge consolidation, pattern recognition, and self-improvement',
-    version: '1.2.0',
-    tags: ['learning', 'dream', 'background'],
-    installed: true,
-    author: 'NEXUS Core',
-    rating: 4.6,
-    downloads: 7654
-  },
-  {
-    name: 'tool_forge',
-    description: 'Create and modify tools dynamically based on task requirements and usage patterns',
-    version: '2.1.0',
-    tags: ['tools', 'creation', 'dynamic'],
-    installed: true,
-    author: 'NEXUS Core',
-    rating: 4.5,
-    downloads: 5432
-  },
-  {
-    name: 'self_reflect',
-    description: 'Analyze past performance and generate behavior adjustments for continuous improvement',
-    version: '1.0.0',
-    tags: ['reflection', 'improvement', 'learning'],
-    installed: true,
-    author: 'NEXUS Core',
-    rating: 4.4,
-    downloads: 4321
-  }
-];
-
-// Available skills marketplace
-const marketplaceSkills: Skill[] = [
-  {
-    name: 'image_generation',
-    description: 'Generate images from text descriptions using AI-powered image synthesis',
-    version: '1.0.0',
-    tags: ['image', 'ai', 'generation'],
-    installed: false,
-    author: 'Community',
-    rating: 4.8,
-    downloads: 8543
-  },
-  {
-    name: 'video_understand',
-    description: 'Analyze and understand video content with temporal reasoning',
-    version: '1.0.0',
-    tags: ['video', 'analysis', 'ai'],
-    installed: false,
-    author: 'Community',
-    rating: 4.6,
-    downloads: 6234
-  },
-  {
-    name: 'pdf_processor',
-    description: 'Extract text, tables, and metadata from PDF documents',
-    version: '2.0.0',
-    tags: ['pdf', 'document', 'extraction'],
-    installed: false,
-    author: 'Community',
-    rating: 4.5,
-    downloads: 5123
-  }
-];
+// NO DEFAULT SKILLS - All skills loaded from API
 
 // Skill icon map
 const skillIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -278,35 +182,28 @@ function SkillCard({ skill, onInstall, onUninstall }: {
   );
 }
 
-// Main SkillPanel component
+// Main SkillPanel component - NO DEFAULTS
 export function SkillPanel() {
-  const [skills, setSkills] = React.useState<Skill[]>(defaultSkills);
-  const [marketplace, setMarketplace] = React.useState<Skill[]>(marketplaceSkills);
+  const [skills, setSkills] = React.useState<Skill[]>([]); // Start empty
+  const [marketplace, setMarketplace] = React.useState<Skill[]>([]); // Start empty
   const [searchQuery, setSearchQuery] = React.useState('');
   const [activeTab, setActiveTab] = React.useState<'installed' | 'marketplace'>('installed');
-  const [isLoading, setIsLoading] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
 
-  // Fetch skills from API
+  // Fetch skills from API - NO DEFAULTS
   const fetchSkills = React.useCallback(async () => {
+    setIsLoading(true);
     try {
-      const response = await fetch('/api/nexus/status');
+      const response = await fetch('/api/nexus/skills');
       if (response.ok) {
         const data = await response.json();
-        if (data.skills && data.skills.length > 0) {
-          // Merge API skills with default
-          const apiSkillNames = data.skills.map((s: Skill) => s.name);
-          const merged = [
-            ...defaultSkills.map(s => ({
-              ...s,
-              installed: apiSkillNames.includes(s.name) || s.installed
-            })),
-            ...data.skills.filter((s: Skill) => !defaultSkills.find(d => d.name === s.name))
-          ];
-          setSkills(merged);
-        }
+        setSkills(data.skills || []); // Use only API data
       }
     } catch (error) {
       console.error('Failed to fetch skills:', error);
+      setSkills([]); // Empty on error
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 

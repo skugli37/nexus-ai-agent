@@ -51,7 +51,7 @@ function storeMemory(content: string, type: string = 'fragment'): void {
   }
   
   memories.push({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    id: crypto.randomUUID(),
     content,
     type,
     timestamp: new Date().toISOString()

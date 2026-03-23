@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     }
     
     const newMemory = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      id: crypto.randomUUID(),
       content,
       type,
       timestamp: new Date().toISOString()
