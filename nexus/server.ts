@@ -13,9 +13,10 @@ import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { Agent } from './core/agent';
 import { VectorStore } from './core/vector-store';
 import { NexusWebSocketServer } from './core/websocket-server';
-import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
+import { join, dirname, basename, extname } from 'path';
 import ZAI from 'z-ai-web-dev-sdk';
+import { codeExecuteTool, CodeExecuteParams } from './tools/code_execute';
 
 // Parse command line arguments
 const { values } = parseArgs({
@@ -158,6 +159,14 @@ class NexusServer {
         await this.handleDream(req, res);
       } else if (pathname === '/tools' && method === 'GET') {
         this.handleTools(req, res);
+      } else if (pathname === '/task' && method === 'POST') {
+        await this.handleTask(req, res);
+      } else if (pathname === '/self-improve' && method === 'POST') {
+        await this.handleSelfImprove(req, res);
+      } else if (pathname === '/execute' && method === 'POST') {
+        await this.handleExecute(req, res);
+      } else if (pathname === '/files' && method === 'GET') {
+        await this.handleListFiles(req, res);
       } else {
         this.sendJson(res, 404, { error: 'Not Found', path: pathname });
       }
@@ -183,6 +192,10 @@ class NexusServer {
         'GET /memory/search': 'Search memories (query: ?q=term)',
         'POST /dream': 'Trigger dream cycle',
         'GET /tools': 'List available tools',
+        'POST /task': 'Execute a task with tool calling',
+        'POST /self-improve': 'Let NEXUS improve itself autonomously',
+        'POST /execute': 'Execute code operations directly',
+        'GET /files': 'List NEXUS source files',
       },
       websocket: `ws://${HOST}:${WS_PORT}`,
     });
@@ -449,7 +462,7 @@ You are helpful, intelligent, and can learn from interactions. Be concise but th
           { name: 'memory_store', description: 'Store information in memory' },
           { name: 'memory_retrieve', description: 'Retrieve memories by query' },
           { name: 'web_search', description: 'Search the web for information' },
-          { name: 'code_execute', description: 'Execute code in sandbox' },
+          { name: 'code_execute', description: 'Execute code and modify files' },
           { name: 'dream_cycle', description: 'Trigger dream cycle for consolidation' },
         ],
       });
@@ -457,6 +470,344 @@ You are helpful, intelligent, and can learn from interactions. Be concise but th
       console.error('Tools error:', error);
       this.sendJson(res, 500, { error: 'Failed to list tools' });
     }
+  }
+
+  /**
+   * Handle /task - Execute a task with AI reasoning and tool calling
+   */
+  private async handleTask(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await this.readBody(req);
+    const { task, autoExecute } = JSON.parse(body || '{}');
+
+    if (!task) {
+      this.sendJson(res, 400, { error: 'Task is required' });
+      return;
+    }
+
+    try {
+      // Build system prompt for autonomous task execution
+      const systemPrompt = `You are NEXUS, an AI agent that can execute tasks autonomously.
+You have access to tools that can:
+- Read, create, modify, and delete files
+- Execute shell commands
+- Run JavaScript/TypeScript code
+- Search the web
+
+When given a task:
+1. Plan your approach
+2. Use the code_execute tool to make actual changes
+3. Verify your work
+4. Report what you did
+
+Tool usage format:
+{
+  "tool": "code_execute",
+  "params": {
+    "action": "create_file|read_file|modify_file|delete_file|run_command|run_code",
+    "path": "file path",
+    "content": "file content",
+    "command": "shell command"
+  }
+}
+
+Respond with JSON containing:
+- "thoughts": your reasoning
+- "tool_calls": array of tool calls to execute
+- "final_response": summary of what you did`;
+
+      // Call AI to plan and execute
+      const response = await this.zai!.chat.completions.create({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Task: ${task}\n\nNEXUS base path: /home/z/my-project/nexus\n\nAnalyze this task and respond with a JSON plan. If you want to execute changes, include tool_calls.` }
+        ],
+        temperature: 0.7,
+        max_tokens: 4096,
+      });
+
+      const aiResponse = response.choices[0]?.message?.content || '';
+      let parsedResponse: any = {};
+      let executedActions: any[] = [];
+
+      try {
+        // Try to extract JSON from various formats
+        // First try direct JSON parse
+        let jsonStr = aiResponse;
+        
+        // Check for JSON inside code blocks
+        const codeBlockMatch = aiResponse.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (codeBlockMatch) {
+          jsonStr = codeBlockMatch[1].trim();
+        }
+        
+        // Try to find JSON object
+        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsedResponse = JSON.parse(jsonMatch[0]);
+        }
+        
+        // Handle nested "thoughts" containing JSON string
+        if (parsedResponse.thoughts && typeof parsedResponse.thoughts === 'string') {
+          try {
+            const nestedMatch = parsedResponse.thoughts.match(/\{[\s\S]*\}/);
+            if (nestedMatch) {
+              const nestedParsed = JSON.parse(nestedMatch[0]);
+              // Merge tool_calls from nested structure
+              if (nestedParsed.tool_calls) {
+                parsedResponse.tool_calls = nestedParsed.tool_calls;
+              }
+            }
+          } catch (nestedE) {
+            // Ignore nested parse errors
+          }
+        }
+      } catch (e) {
+        parsedResponse = { thoughts: aiResponse };
+      }
+
+      // Execute tool calls if present and autoExecute is true
+      if (autoExecute && parsedResponse.tool_calls && Array.isArray(parsedResponse.tool_calls)) {
+        for (const toolCall of parsedResponse.tool_calls) {
+          if (toolCall.tool === 'code_execute') {
+            const result = await codeExecuteTool.execute(toolCall.params as CodeExecuteParams);
+            executedActions.push({
+              tool: 'code_execute',
+              params: toolCall.params,
+              result
+            });
+          }
+        }
+      }
+
+      this.sendJson(res, 200, {
+        task,
+        aiResponse: parsedResponse,
+        executedActions,
+        autoExecute: autoExecute || false,
+        tokens: response.usage?.total_tokens || 0
+      });
+
+    } catch (error) {
+      console.error('Task execution error:', error);
+      this.sendJson(res, 500, {
+        error: 'Task execution failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * Handle /self-improve - Let NEXUS autonomously improve itself
+   */
+  private async handleSelfImprove(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await this.readBody(req);
+    const { focus, maxChanges = 3 } = JSON.parse(body || '{}');
+
+    try {
+      // First, analyze current NEXUS codebase
+      const analysisPrompt = `You are NEXUS, an AI agent capable of improving your own code.
+
+Your source code is located at /home/z/my-project/nexus/
+
+Analyze your current implementation and propose ONE concrete improvement you can make to yourself.
+
+Focus areas you might consider:
+${focus || '- Adding a new tool or capability\n- Improving error handling\n- Adding new features\n- Optimizing code\n- Adding tests'}
+
+Respond with a JSON object:
+{
+  "analysis": "brief analysis of current state",
+  "improvement": "what improvement you want to make",
+  "filesToChange": ["list of files"],
+  "changes": [
+    {
+      "file": "path/to/file",
+      "action": "create|modify",
+      "content": "new content or changes",
+      "reason": "why this change"
+    }
+  ],
+  "expectedBenefit": "what this improves"
+}`;
+
+      const analysisResponse = await this.zai!.chat.completions.create({
+        messages: [
+          { role: 'system', content: analysisPrompt },
+          { role: 'user', content: 'Please analyze yourself and propose an improvement. Be specific and practical.' }
+        ],
+        temperature: 0.8,
+        max_tokens: 4096,
+      });
+
+      const analysisContent = analysisResponse.choices[0]?.message?.content || '';
+      let improvementPlan: any = {};
+
+      try {
+        const jsonMatch = analysisContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          improvementPlan = JSON.parse(jsonMatch[0]);
+        }
+      } catch (e) {
+        improvementPlan = { raw: analysisContent };
+      }
+
+      // Execute the proposed changes
+      const executedChanges: any[] = [];
+      let changesMade = 0;
+
+      if (improvementPlan.changes && Array.isArray(improvementPlan.changes)) {
+        for (const change of improvementPlan.changes) {
+          if (changesMade >= maxChanges) break;
+
+          try {
+            let result;
+            if (change.action === 'create') {
+              result = await codeExecuteTool.execute({
+                action: 'create_file',
+                path: change.file,
+                content: change.content
+              });
+            } else if (change.action === 'modify') {
+              result = await codeExecuteTool.execute({
+                action: 'modify_file',
+                path: change.file,
+                content: change.content
+              });
+            }
+
+            if (result?.success) {
+              executedChanges.push({
+                file: change.file,
+                action: change.action,
+                reason: change.reason,
+                success: true
+              });
+              changesMade++;
+            }
+          } catch (e) {
+            executedChanges.push({
+              file: change.file,
+              action: change.action,
+              success: false,
+              error: e instanceof Error ? e.message : String(e)
+            });
+          }
+        }
+      }
+
+      // Store this self-improvement as a memory
+      try {
+        await this.vectorStore.store({
+          id: crypto.randomUUID(),
+          content: `Self-improvement: ${improvementPlan.improvement || 'Unknown'}\nChanges: ${executedChanges.length} files modified`,
+          type: 'episodic',
+          importance: 0.8,
+          metadata: { type: 'self_improvement', changes: executedChanges },
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastAccessed: new Date(),
+          accessCount: 0,
+        });
+      } catch (e) {
+        console.warn('Failed to store improvement memory:', e);
+      }
+
+      this.sendJson(res, 200, {
+        success: true,
+        analysis: improvementPlan.analysis,
+        proposedImprovement: improvementPlan.improvement,
+        expectedBenefit: improvementPlan.expectedBenefit,
+        executedChanges,
+        totalChanges: changesMade,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('Self-improvement error:', error);
+      this.sendJson(res, 500, {
+        error: 'Self-improvement failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * Handle /execute - Direct code execution
+   */
+  private async handleExecute(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await this.readBody(req);
+    const params = JSON.parse(body || '{}') as CodeExecuteParams;
+
+    if (!params.action) {
+      this.sendJson(res, 400, { error: 'Action is required' });
+      return;
+    }
+
+    try {
+      const result = await codeExecuteTool.execute(params);
+      this.sendJson(res, 200, result);
+    } catch (error) {
+      this.sendJson(res, 500, {
+        error: 'Execution failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * Handle /files - List NEXUS source files
+   */
+  private async handleListFiles(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    try {
+      const url = new URL(req.url || '/', `http://${req.headers.host}`);
+      const dir = url.searchParams.get('dir') || '';
+      const basePath = '/home/z/my-project/nexus';
+      const targetPath = dir ? join(basePath, dir) : basePath;
+
+      const files = this.listFilesRecursive(targetPath, basePath);
+
+      this.sendJson(res, 200, {
+        path: targetPath,
+        files,
+        count: files.length
+      });
+    } catch (error) {
+      this.sendJson(res, 500, {
+        error: 'Failed to list files',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  /**
+   * Recursively list files
+   */
+  private listFilesRecursive(dir: string, base: string): Array<{ path: string; relativePath: string; size: number; type: string }> {
+    const files: Array<{ path: string; relativePath: string; size: number; type: string }> = [];
+
+    if (!existsSync(dir)) return files;
+
+    const entries = readdirSync(dir);
+    for (const entry of entries) {
+      const fullPath = join(dir, entry);
+      const stat = statSync(fullPath);
+
+      if (stat.isDirectory()) {
+        if (!['node_modules', '.git', 'dist', '.next', '__tests__'].includes(entry)) {
+          files.push(...this.listFilesRecursive(fullPath, base));
+        }
+      } else {
+        const ext = extname(entry);
+        files.push({
+          path: fullPath,
+          relativePath: fullPath.replace(base + '/', ''),
+          size: stat.size,
+          type: ext.replace('.', '') || 'unknown'
+        });
+      }
+    }
+
+    return files;
   }
 
   // Helper methods

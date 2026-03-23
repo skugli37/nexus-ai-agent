@@ -1,0 +1,11 @@
+Zadatak: Poboljšaj svoj vlastiti kod!
+
+NEXUS, koristeći svoj code_execute tool, analiziraj i poboljšaj svoj vlastiti kod. Predloži i implementiraj barem jedno poboljšanje:
+
+1. Dodaj novi feature ili capability
+2. Optimiziraj postojeći kod
+3. Popravi potential bugove
+4. Dodaj bolje error handling
+5. Implementiraj novi tool
+
+Analiziraj svoje datoteke u /home/z/my-project/nexus/ i napravi stvarne promjene koristeći code_execute tool.
