@@ -291,7 +291,7 @@ export class LLMCLI {
   }
 
   /**
-   * Test a provider
+   * Test a provider - REAL implementation for ALL providers
    */
   private async testProvider(provider?: string): Promise<void> {
     const testProvider = (provider as LLMProviderType) || this.config.defaultProvider;
@@ -304,21 +304,129 @@ export class LLMCLI {
 
     try {
       const startTime = Date.now();
+      let response: string;
+      let tokens: number;
 
-      if (testProvider === 'z-ai') {
-        const response = await this.zai!.chat.completions.create({
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 100,
-        });
+      switch (testProvider) {
+        case 'z-ai': {
+          const zaiResponse = await this.zai!.chat.completions.create({
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 100,
+          });
+          response = zaiResponse.choices[0]?.message?.content || 'No response';
+          tokens = zaiResponse.usage?.total_tokens || 0;
+          break;
+        }
 
-        const duration = Date.now() - startTime;
-        console.log(`\n📄 Response (${duration}ms):`);
-        console.log(`   ${response.choices[0]?.message?.content}\n`);
-        console.log(`   Tokens: ${response.usage?.total_tokens || 'N/A'}`);
-      } else {
-        console.log('\n⚠️  Direct testing for other providers requires proper API configuration.');
-        console.log('   Use the HTTP API endpoint: POST /llm/chat\n');
+        case 'openai': {
+          if (!this.config.apiKeys['openai']) {
+            console.log('\n❌ OpenAI API key not configured. Use: config openai\n');
+            return;
+          }
+          const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.config.apiKeys['openai']}`,
+            },
+            body: JSON.stringify({
+              model: config.defaultModel,
+              messages: [{ role: 'user', content: prompt }],
+              max_tokens: 100,
+            }),
+          });
+          if (!openaiResponse.ok) {
+            throw new Error(`OpenAI API error: ${await openaiResponse.text()}`);
+          }
+          const openaiData = await openaiResponse.json();
+          response = openaiData.choices[0]?.message?.content || 'No response';
+          tokens = openaiData.usage?.total_tokens || 0;
+          break;
+        }
+
+        case 'anthropic': {
+          if (!this.config.apiKeys['anthropic']) {
+            console.log('\n❌ Anthropic API key not configured. Use: config anthropic\n');
+            return;
+          }
+          const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': this.config.apiKeys['anthropic'],
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model: config.defaultModel,
+              max_tokens: 100,
+              messages: [{ role: 'user', content: prompt }],
+            }),
+          });
+          if (!anthropicResponse.ok) {
+            throw new Error(`Anthropic API error: ${await anthropicResponse.text()}`);
+          }
+          const anthropicData = await anthropicResponse.json();
+          response = anthropicData.content[0]?.text || 'No response';
+          tokens = (anthropicData.usage?.input_tokens || 0) + (anthropicData.usage?.output_tokens || 0);
+          break;
+        }
+
+        case 'ollama': {
+          const ollamaUrl = this.config.baseUrls['ollama'] || 'http://localhost:11434';
+          const ollamaResponse = await fetch(`${ollamaUrl}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: config.defaultModel,
+              messages: [{ role: 'user', content: prompt }],
+              stream: false,
+            }),
+          });
+          if (!ollamaResponse.ok) {
+            throw new Error(`Ollama API error: ${await ollamaResponse.text()}`);
+          }
+          const ollamaData = await ollamaResponse.json();
+          response = ollamaData.message?.content || 'No response';
+          tokens = (ollamaData.prompt_eval_count || 0) + (ollamaData.eval_count || 0);
+          break;
+        }
+
+        case 'custom': {
+          const customUrl = this.config.baseUrls['custom'];
+          if (!customUrl) {
+            console.log('\n❌ Custom LLM URL not configured. Use: config custom\n');
+            return;
+          }
+          const customResponse = await fetch(`${customUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(this.config.apiKeys['custom'] && { 'Authorization': `Bearer ${this.config.apiKeys['custom']}` }),
+            },
+            body: JSON.stringify({
+              model: config.defaultModel,
+              messages: [{ role: 'user', content: prompt }],
+              max_tokens: 100,
+            }),
+          });
+          if (!customResponse.ok) {
+            throw new Error(`Custom LLM API error: ${await customResponse.text()}`);
+          }
+          const customData = await customResponse.json();
+          response = customData.choices?.[0]?.message?.content || customData.content || 'No response';
+          tokens = customData.usage?.total_tokens || 0;
+          break;
+        }
+
+        default:
+          console.log(`\n❌ Unknown provider: ${testProvider}\n`);
+          return;
       }
+
+      const duration = Date.now() - startTime;
+      console.log(`\n📄 Response (${duration}ms):`);
+      console.log(`   ${response}\n`);
+      console.log(`   Tokens: ${tokens}`);
 
     } catch (error) {
       console.log(`\n❌ Test failed: ${error instanceof Error ? error.message : String(error)}\n`);

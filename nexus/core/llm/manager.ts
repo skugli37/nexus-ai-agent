@@ -264,19 +264,6 @@ export class LLMManager {
     return info;
   }
 
-  /**
-   * Set default provider
-   */
-  setDefaultProvider(type: LLMProviderType): void {
-    this.config.defaultProvider = type;
-  }
-
-  /**
-   * Get usage statistics
-   */
-  getUsageStats(): UsageStats {
-    return { ...this.usageStats };
-  }
 }
 
 // ============================================================================
