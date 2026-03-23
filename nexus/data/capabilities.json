@@ -1,0 +1,119 @@
+[
+  {
+    "id": "code_execute",
+    "name": "Code Execute Tool",
+    "description": "Execute code and manage files. Create, modify, delete files. Run shell commands.",
+    "version": "2.0.0",
+    "category": "file_operations",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "filesystem_tool",
+    "name": "FileSystem Tool",
+    "description": "Robust file I/O operations with error handling.",
+    "version": "1.0.0",
+    "category": "file_operations",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "web_search",
+    "name": "Web Search Tool",
+    "description": "Search the web for real-time information. Extract and summarize content.",
+    "version": "2.0.0",
+    "category": "web",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "http_request",
+    "name": "HTTP Request Tool",
+    "description": "Make HTTP requests to external APIs and services.",
+    "version": "1.0.0",
+    "category": "web",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "memory_store",
+    "name": "Memory Store Tool",
+    "description": "Store information in NEXUS memory system.",
+    "version": "1.0.0",
+    "category": "memory",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "memory_retrieve",
+    "name": "Memory Retrieve Tool",
+    "description": "Retrieve memories from NEXUS memory system.",
+    "version": "1.0.0",
+    "category": "memory",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "memory_bank",
+    "name": "Memory Bank",
+    "description": "Long-term persistent memory for learning and preferences.",
+    "version": "1.0.0",
+    "category": "memory",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "dream_cycle",
+    "name": "Dream Cycle Tool",
+    "description": "Memory consolidation and pattern discovery.",
+    "version": "1.0.0",
+    "category": "ai",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "llm_chat",
+    "name": "LLM Chat",
+    "description": "Large language model integration for reasoning and generation.",
+    "version": "1.0.0",
+    "category": "ai",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "code_sandbox",
+    "name": "Code Sandbox",
+    "description": "Safe code execution environment for JavaScript/TypeScript.",
+    "version": "1.0.0",
+    "category": "code_execution",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "text_analyze",
+    "name": "Text Analysis Tool",
+    "description": "Analyze text for patterns, statistics, and insights.",
+    "version": "1.0.0",
+    "category": "analysis",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "capability_registry",
+    "name": "Capability Registry",
+    "description": "Dynamic introspection of NEXUS capabilities.",
+    "version": "1.0.0",
+    "category": "self_improvement",
+    "enabled": true,
+    "useCount": 0
+  },
+  {
+    "id": "self_improve",
+    "name": "Self Improvement",
+    "description": "Ability to analyze and improve own codebase.",
+    "version": "1.0.0",
+    "category": "self_improvement",
+    "enabled": true,
+    "useCount": 0
+  }
+]
