@@ -1,0 +1,474 @@
+// NEXUS AI Agent - Prisma Schema
+// SQLite for development, PostgreSQL for production
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// AGENT MODEL
+// ============================================================================
+
+/// Represents an AI agent instance with its configuration and state
+model Agent {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("idle") // idle, processing, dreaming, reflecting, learning, error
+  phase       String   @default("conscious") // conscious, subconscious
+  
+  // Configuration (stored as JSON string)
+  config      String   @default("{}")
+  
+  // Metrics
+  tasksCompleted    Int      @default(0)
+  tasksFailed       Int      @default(0)
+  averageResponseTime Float  @default(0)
+  totalTokensUsed   Int      @default(0)
+  dreamCyclesCompleted Int   @default(0)
+  learningIterations Int     @default(0)
+  
+  // Soft delete
+  deleted      Boolean  @default(false)
+  deletedAt    DateTime?
+  
+  // Timestamps
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastActivity DateTime @default(now())
+  
+  // Relations
+  sessions     Session[]
+  memories     Memory[]
+  tools        Tool[]
+  
+  @@index([status])
+  @@index([deleted])
+  @@index([createdAt])
+  @@map("agents")
+}
+
+// ============================================================================
+// SESSION MODEL
+// ============================================================================
+
+/// Represents a conversation session with an agent
+model Session {
+  id          String   @id @default(cuid())
+  agentId     String
+  
+  // Status
+  status      String   @default("active") // active, paused, completed, archived
+  
+  // Session context (stored as JSON string)
+  context     String   @default("{}")
+  summary     String?
+  
+  // Token tracking
+  totalTokens Int      @default(0)
+  
+  // Soft delete
+  deleted     Boolean  @default(false)
+  deletedAt   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  
+  // Relations
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  messages    Message[]
+  
+  @@index([agentId])
+  @@index([status])
+  @@index([deleted])
+  @@index([createdAt])
+  @@map("sessions")
+}
+
+// ============================================================================
+// MESSAGE MODEL
+// ============================================================================
+
+/// Represents a message in a session conversation
+model Message {
+  id          String   @id @default(cuid())
+  sessionId   String
+  
+  // Message content
+  role        String   // system, user, assistant, tool
+  content     String
+  
+  // Tool calls (stored as JSON string)
+  toolCalls   String?  @default("[]")
+  
+  // Metadata (stored as JSON string)
+  metadata    String?  @default("{}")
+  
+  // Token tracking
+  tokens      Int      @default(0)
+  
+  // Soft delete
+  deleted     Boolean  @default(false)
+  deletedAt   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  @@index([sessionId])
+  @@index([role])
+  @@index([deleted])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+// ============================================================================
+// MEMORY MODEL
+// ============================================================================
+
+/// Represents a memory entry for an agent
+model Memory {
+  id          String   @id @default(cuid())
+  agentId     String
+  
+  // Memory type
+  type        String   // episodic, semantic, procedural, working
+  
+  // Content
+  content     String
+  
+  // Embedding (stored as JSON string for SQLite, will be proper vector in PostgreSQL)
+  embedding   String?  @default("[]")
+  
+  // Importance and access
+  importance  Float    @default(0.5)
+  accessCount Int      @default(0)
+  
+  // Associations (stored as JSON string)
+  associations String? @default("[]")
+  
+  // Expiration
+  expiresAt   DateTime?
+  
+  // Metadata (stored as JSON string)
+  metadata    String?  @default("{}")
+  
+  // Soft delete
+  deleted     Boolean  @default(false)
+  deletedAt   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastAccessed DateTime @default(now())
+  
+  // Relations
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  @@index([agentId])
+  @@index([type])
+  @@index([importance])
+  @@index([deleted])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@map("memories")
+}
+
+// ============================================================================
+// TOOL MODEL
+// ============================================================================
+
+/// Represents a tool available to an agent
+model Tool {
+  id          String   @id @default(cuid())
+  agentId     String
+  
+  // Tool info
+  name        String
+  description String?
+  
+  // Code
+  code        String?  @default("")
+  filePath    String?  @default("")
+  
+  // Configuration (stored as JSON string)
+  parameters  String?  @default("[]")
+  
+  // Status
+  enabled     Boolean  @default(true)
+  category    String?  @default("custom") // builtin, custom, forge
+  
+  // Usage tracking
+  usageCount  Int      @default(0)
+  lastUsed    DateTime?
+  
+  // Soft delete
+  deleted     Boolean  @default(false)
+  deletedAt   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  @@index([agentId])
+  @@index([name])
+  @@index([category])
+  @@index([enabled])
+  @@index([deleted])
+  @@map("tools")
+}
+
+// ============================================================================
+// SKILL MODEL
+// ============================================================================
+
+/// Represents a skill that can be loaded by agents
+model Skill {
+  id          String   @id @default(cuid())
+  
+  // Skill info
+  name        String   @unique
+  description String?
+  
+  // Content (SKILL.md content)
+  content     String   @default("")
+  
+  // Source
+  source      String?  @default("local") // local, clawhub, marketplace
+  sourceUrl   String?
+  
+  // Metadata (stored as JSON string)
+  metadata    String?  @default("{}")
+  tags        String?  @default("[]")
+  
+  // Author and version
+  author      String?  @default("unknown")
+  version     String?  @default("1.0.0")
+  
+  // Stats
+  downloads   Int      @default(0)
+  rating      Float    @default(0)
+  
+  // Status
+  installed   Boolean  @default(true)
+  enabled     Boolean  @default(true)
+  
+  // Soft delete
+  deleted     Boolean  @default(false)
+  deletedAt   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([name])
+  @@index([source])
+  @@index([installed])
+  @@index([enabled])
+  @@index([deleted])
+  @@map("skills")
+}
+
+// ============================================================================
+// PIPELINE MODEL
+// ============================================================================
+
+/// Represents a pipeline of operations for the agent
+model Pipeline {
+  id          String   @id @default(cuid())
+  
+  // Pipeline info
+  name        String
+  description String?
+  
+  // Definition (stored as JSON string)
+  definition  String   @default("{}") // nodes, edges, config
+  
+  // Status
+  status      String   @default("draft") // draft, active, archived
+  
+  // Soft delete
+  deleted     Boolean  @default(false)
+  deletedAt   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  executions  Execution[]
+  
+  @@index([name])
+  @@index([status])
+  @@index([deleted])
+  @@map("pipelines")
+}
+
+// ============================================================================
+// EXECUTION MODEL
+// ============================================================================
+
+/// Represents an execution of a pipeline or task
+model Execution {
+  id          String   @id @default(cuid())
+  pipelineId  String?
+  
+  // Execution type
+  type        String   // pipeline, task, tool, dream_cycle
+  
+  // Input and output (stored as JSON strings)
+  input       String   @default("{}")
+  output      String?  @default("{}")
+  
+  // Status
+  status      String   @default("pending") // pending, running, completed, failed, cancelled
+  
+  // Error tracking
+  error       String?
+  
+  // Timing
+  startedAt   DateTime?
+  completedAt DateTime?
+  duration    Int?     @default(0) // milliseconds
+  
+  // Metrics (stored as JSON string)
+  metrics     String?  @default("{}")
+  
+  // Soft delete
+  deleted     Boolean  @default(false)
+  deletedAt   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  pipeline    Pipeline? @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
+  
+  @@index([pipelineId])
+  @@index([type])
+  @@index([status])
+  @@index([deleted])
+  @@index([createdAt])
+  @@map("executions")
+}
+
+// ============================================================================
+// AUDIT LOG MODEL
+// ============================================================================
+
+/// Represents an audit log entry for tracking operations
+model AuditLog {
+  id          String   @id @default(cuid())
+  
+  // Operation info
+  action      String   // create, update, delete, execute, etc.
+  entityType  String   // agent, session, memory, tool, skill, etc.
+  entityId    String?
+  
+  // Changes (stored as JSON string)
+  oldValue    String?  @default("{}")
+  newValue    String?  @default("{}")
+  
+  // Context
+  userId      String?
+  agentId     String?
+  sessionId   String?
+  ipAddress   String?
+  userAgent   String?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  
+  @@index([action])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([agentId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================================
+// BEHAVIOR RULE MODEL
+// ============================================================================
+
+/// Represents behavior rules for agent self-evolution
+model BehaviorRule {
+  id          String   @id @default(cuid())
+  agentId     String?
+  
+  // Rule info
+  name        String
+  description String?
+  
+  // Rule content
+  rule        String
+  
+  // Priority and effectiveness
+  priority    Int      @default(0)
+  effectiveness Float  @default(0)
+  
+  // Trigger conditions (stored as JSON string)
+  triggers    String?  @default("[]")
+  
+  // Status
+  enabled     Boolean  @default(true)
+  
+  // Soft delete
+  deleted     Boolean  @default(false)
+  deletedAt   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([agentId])
+  @@index([name])
+  @@index([enabled])
+  @@index([deleted])
+  @@map("behavior_rules")
+}
+
+// ============================================================================
+// LEARNING EXPERIENCE MODEL
+// ============================================================================
+
+/// Represents a learning experience for agent improvement
+model LearningExperience {
+  id          String   @id @default(cuid())
+  agentId     String?
+  taskId      String?
+  
+  // Experience
+  input       String
+  output      String
+  feedback    String?
+  
+  // Outcome
+  success     Boolean  @default(false)
+  
+  // Lessons learned (stored as JSON string)
+  lessons     String?  @default("[]")
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  
+  @@index([agentId])
+  @@index([taskId])
+  @@index([success])
+  @@index([createdAt])
+  @@map("learning_experiences")
+}
