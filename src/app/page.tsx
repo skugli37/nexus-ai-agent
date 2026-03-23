@@ -19,7 +19,11 @@ import {
   Sparkles,
   Zap,
   Terminal,
-  ChevronRight
+  ChevronRight,
+  Cpu,
+  Check,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { AgentChat } from '@/components/nexus/AgentChat';
 import { AgentStatus } from '@/components/nexus/AgentStatus';
@@ -28,6 +32,52 @@ import { MemoryPanel } from '@/components/nexus/MemoryPanel';
 import { SkillPanel } from '@/components/nexus/SkillPanel';
 import { PipelineBuilderUI } from '@/components/nexus/PipelineBuilder';
 import { GitBranch } from 'lucide-react';
+
+// LLM Provider type
+type LLMProvider = 'z-ai' | 'openai' | 'anthropic' | 'ollama' | 'custom';
+
+// LLM Provider configurations
+const LLM_PROVIDERS: Record<LLMProvider, {
+  name: string;
+  description: string;
+  models: string[];
+  requiresKey: boolean;
+  envKey?: string;
+}> = {
+  'z-ai': {
+    name: 'Z-AI (Default)',
+    description: 'Built-in AI provider - always available',
+    models: ['default'],
+    requiresKey: false,
+  },
+  'openai': {
+    name: 'OpenAI',
+    description: 'GPT-4, GPT-4o, GPT-3.5 Turbo',
+    models: ['gpt-4-turbo', 'gpt-4', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'],
+    requiresKey: true,
+    envKey: 'OPENAI_API_KEY',
+  },
+  'anthropic': {
+    name: 'Anthropic Claude',
+    description: 'Claude 3 Opus, Sonnet, Haiku',
+    models: ['claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
+    requiresKey: true,
+    envKey: 'ANTHROPIC_API_KEY',
+  },
+  'ollama': {
+    name: 'Ollama (Local)',
+    description: 'Run models locally on your machine',
+    models: ['llama2', 'llama3', 'mistral', 'mixtral', 'codellama', 'deepseek-coder'],
+    requiresKey: false,
+  },
+  'custom': {
+    name: 'Custom Endpoint',
+    description: 'Any OpenAI-compatible API',
+    models: ['depends on endpoint'],
+    requiresKey: true,
+    envKey: 'CUSTOM_LLM_API_KEY',
+  },
+};
 
 // Navigation items
 const navItems = [
@@ -252,25 +302,150 @@ function MemoryView() {
 
 // Settings view
 function SettingsView() {
+  const [selectedProvider, setSelectedProvider] = React.useState<LLMProvider>('z-ai');
+  const [selectedModel, setSelectedModel] = React.useState('default');
+  const [apiKey, setApiKey] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  const handleSaveConfig = async () => {
+    setSaving(true);
+    try {
+      // Call the API to save configuration
+      const response = await fetch('http://localhost:3001/llm/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: selectedProvider }),
+      });
+      
+      if (response.ok) {
+        alert('Configuration saved!');
+      }
+    } catch (error) {
+      console.error('Failed to save config:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* LLM Provider Selection */}
+      <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-indigo-600/20 rounded-lg">
+            <Cpu className="h-5 w-5 text-indigo-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-slate-100">LLM Provider</h3>
+            <p className="text-sm text-slate-400">Choose your AI model provider</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+          {(Object.keys(LLM_PROVIDERS) as LLMProvider[]).map((provider) => {
+            const config = LLM_PROVIDERS[provider];
+            const isSelected = selectedProvider === provider;
+            
+            return (
+              <button
+                key={provider}
+                onClick={() => {
+                  setSelectedProvider(provider);
+                  setSelectedModel(config.models[0]);
+                }}
+                className={cn(
+                  'flex flex-col items-start p-4 rounded-lg border transition-all text-left',
+                  isSelected
+                    ? 'border-indigo-500 bg-indigo-600/10'
+                    : 'border-slate-700 bg-slate-900/50 hover:border-slate-600'
+                )}
+              >
+                <div className="flex items-center justify-between w-full mb-2">
+                  <span className="font-medium text-slate-200">{config.name}</span>
+                  {isSelected && <Check className="h-4 w-4 text-indigo-400" />}
+                </div>
+                <p className="text-xs text-slate-400 mb-2">{config.description}</p>
+                {config.requiresKey && (
+                  <div className="flex items-center gap-1 text-xs text-amber-400">
+                    <AlertCircle className="h-3 w-3" />
+                    <span>Requires API key</span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Model Selection */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            Model
+          </label>
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+          >
+            {LLM_PROVIDERS[selectedProvider].models.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* API Key (if needed) */}
+        {LLM_PROVIDERS[selectedProvider].requiresKey && (
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              API Key
+            </label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={`Enter your ${LLM_PROVIDERS[selectedProvider].envKey}`}
+              className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+        )}
+
+        <Button
+          onClick={handleSaveConfig}
+          disabled={saving}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white"
+        >
+          {saving ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Check className="h-4 w-4 mr-2" />
+              Save Configuration
+            </>
+          )}
+        </Button>
+      </div>
+
       <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-slate-100 mb-4">Agent Configuration</h3>
         
         <div className="space-y-4">
           <SettingRow
             label="Primary Model"
-            value="Claude 3.5 Sonnet"
+            value={LLM_PROVIDERS[selectedProvider].name}
             description="Main LLM for reasoning and responses"
           />
           <SettingRow
-            label="Utility Model"
-            value="GPT-4o-mini"
-            description="Model for summarization and utility tasks"
+            label="Selected Model"
+            value={selectedModel}
+            description="Currently selected model variant"
           />
           <SettingRow
             label="Dream Cycle Interval"
-            value="30 minutes"
+            value="60 minutes"
             description="Time between background processing cycles"
           />
           <SettingRow
