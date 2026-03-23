@@ -1,39 +1,58 @@
 /**
  * NEXUS API - Dream Endpoint
- * Uses REAL Subconscious module for dream cycles
+ * Full implementation using Agent's dream cycle functionality
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAgent, memorize } from '@/lib/nexus-bridge';
+import { runDreamCycle, memorize, getAgent } from '@/lib/nexus-bridge';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { deep, duration } = body;
     
-    // Get REAL agent
+    // Get agent to check state
     const agent = await getAgent();
+    const state = agent.getState();
     
-    // Trigger dream cycle through agent's subconscious
-    const result = await agent.runDreamCycle({
-      deep: deep === true,
-      duration: duration || 60000
-    });
+    if (state.status === 'dreaming') {
+      return NextResponse.json(
+        { error: 'Dream cycle already in progress' },
+        { status: 409 }
+      );
+    }
     
-    // Memorize dream results
+    // Run dream cycle
+    const result = await runDreamCycle();
+    
+    // Memorize dream results if significant
+    if (result.insights && result.insights.length > 0) {
+      await memorize(
+        `Dream insights: ${result.insights.join('; ')}`,
+        'solution'
+      );
+    }
+    
     if (result.patterns && result.patterns.length > 0) {
-      await memorize(`Dream patterns: ${result.patterns.join(', ')}`, 'main');
+      await memorize(
+        `Dream patterns: ${result.patterns.join(', ')}`,
+        'fragment'
+      );
     }
     
     return NextResponse.json({
       success: true,
       dreamCycle: {
-        id: crypto.randomUUID(),
-        duration: result.duration || 0,
+        id: result.id,
+        startedAt: result.startedAt,
+        completedAt: result.completedAt,
+        duration: new Date(result.completedAt).getTime() - new Date(result.startedAt).getTime(),
+        memoriesProcessed: result.memoriesProcessed,
+        toolsGenerated: result.toolsGenerated,
         patternsFound: result.patterns?.length || 0,
-        memoriesConsolidated: result.consolidated || 0,
         insights: result.insights || [],
-        timestamp: new Date().toISOString()
+        optimizations: result.optimizations || [],
+        patterns: result.patterns || []
       }
     });
   } catch (error) {
@@ -46,8 +65,14 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
+  const agent = await getAgent();
+  const state = agent.getState();
+  const metrics = agent.getMetrics();
+  
   return NextResponse.json({
-    status: 'available',
-    message: 'Dream cycle endpoint ready'
+    status: state.status === 'dreaming' ? 'running' : 'available',
+    phase: state.phase,
+    dreamCyclesCompleted: metrics.dreamCyclesCompleted,
+    message: 'Dream cycle endpoint ready - POST to trigger a dream cycle'
   });
 }

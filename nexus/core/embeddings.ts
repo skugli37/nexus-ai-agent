@@ -68,6 +68,9 @@ export class EmbeddingsEngine {
     }
   }
 
+  private rateLimited: boolean = false;
+  private rateLimitUntil: number = 0;
+
   /**
    * Generate embedding for a single text using LLM
    */
@@ -81,10 +84,15 @@ export class EmbeddingsEngine {
       await this.initialize();
     }
 
+    // Check if we're currently rate-limited
+    if (this.rateLimited && Date.now() < this.rateLimitUntil) {
+      return this.fallbackEmbed(text);
+    }
+
     let embedding: number[];
 
     try {
-      if (this.zai) {
+      if (this.zai && !this.rateLimited) {
         // Use z-ai-web-dev-sdk for embeddings
         // Note: The SDK may or may not support embeddings directly
         // If not, we fall back to deterministic embeddings
@@ -92,8 +100,13 @@ export class EmbeddingsEngine {
       } else {
         embedding = this.fallbackEmbed(text);
       }
-    } catch (error) {
-      console.warn('LLM embeddings failed, using fallback:', error);
+    } catch (error: any) {
+      // Check for rate limit error
+      if (error?.message?.includes('429') || error?.message?.includes('rate')) {
+        console.warn('Rate limited - using fallback embeddings for 60 seconds');
+        this.rateLimited = true;
+        this.rateLimitUntil = Date.now() + 60000; // 60 second cooldown
+      }
       embedding = this.fallbackEmbed(text);
     }
     

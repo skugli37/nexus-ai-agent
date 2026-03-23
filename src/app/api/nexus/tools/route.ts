@@ -1,20 +1,30 @@
 /**
  * NEXUS API - Tools Endpoint
- * Uses REAL ToolForge from core module
+ * Full implementation using Tool Forge capabilities
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { listTools, createTool, getToolForge } from '@/lib/nexus-bridge';
-import { existsSync, unlinkSync } from 'fs';
+import { listTools, createTool, deleteTool, getNexusHome } from '@/lib/nexus-bridge';
+import { existsSync, unlinkSync, readdirSync, mkdirSync, writeFileSync, statSync } from 'fs';
 import { join } from 'path';
-import { getNexusHome } from '@/lib/nexus-bridge';
 
 // List all tools
 export async function GET() {
   try {
     const tools = await listTools();
-    return NextResponse.json({ tools });
+    
+    // Add additional metadata
+    const toolsWithMeta = tools.map(tool => ({
+      ...tool,
+      path: join(getNexusHome(), 'tools', `${tool.id}.ts`)
+    }));
+    
+    return NextResponse.json({ 
+      tools: toolsWithMeta,
+      total: tools.length
+    });
   } catch (error) {
+    console.error('Tools list error:', error);
     return NextResponse.json(
       { error: 'Failed to list tools' },
       { status: 500 }
@@ -26,7 +36,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, category, parameters, code } = body;
+    const { name, description, category, parameters, code, timeout, retries, dependencies } = body;
     
     if (!name) {
       return NextResponse.json(
@@ -35,28 +45,33 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Generate code using ToolForge if not provided
-    const toolCode = code || `/**
- * Tool: ${name}
- * ${description || 'Custom tool'}
- */
-
-export async function execute(args: Record<string, unknown>) {
-  // Tool implementation
-  console.log('Executing ${name} with args:', args);
-  return { success: true, result: args };
-}
-
-export default { name: '${name}', execute };
-`;
+    // Generate code if not provided
+    const toolCode = code || generateToolCode(name, description, parameters, category);
     
-    const tool = await createTool(name, description || '', toolCode);
+    const tool = await createTool(
+      name, 
+      description || 'Custom tool', 
+      toolCode,
+      parameters || [],
+      category || 'custom'
+    );
+    
+    // Save additional config if provided
+    if (timeout || retries || dependencies) {
+      const configPath = join(getNexusHome(), 'tools', `${tool.id}.config.json`);
+      writeFileSync(configPath, JSON.stringify({
+        timeout: timeout || 30000,
+        retries: retries || 3,
+        dependencies: dependencies || []
+      }, null, 2));
+    }
     
     return NextResponse.json({
       success: true,
       tool
     });
   } catch (error) {
+    console.error('Tool create error:', error);
     return NextResponse.json(
       { error: 'Failed to create tool', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -68,12 +83,42 @@ export default { name: '${name}', execute };
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, enabled } = body;
+    const { id, enabled, code, description, parameters } = body;
     
-    // Toggle tool enabled status
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Tool ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    const toolsDir = join(getNexusHome(), 'tools');
+    const extensions = ['.ts', '.js', '.py'];
+    let toolPath: string | null = null;
+    
+    for (const ext of extensions) {
+      const path = join(toolsDir, `${id}${ext}`);
+      if (existsSync(path)) {
+        toolPath = path;
+        break;
+      }
+    }
+    
+    if (!toolPath) {
+      return NextResponse.json(
+        { error: `Tool '${id}' not found` },
+        { status: 404 }
+      );
+    }
+    
+    // Update code if provided
+    if (code) {
+      writeFileSync(toolPath, code);
+    }
+    
     return NextResponse.json({
       success: true,
-      message: `Tool ${id} ${enabled ? 'enabled' : 'disabled'}`
+      message: `Tool ${id} updated`
     });
   } catch (error) {
     return NextResponse.json(
@@ -96,9 +141,19 @@ export async function DELETE(request: NextRequest) {
       );
     }
     
-    const toolPath = join(getNexusHome(), 'tools', `${id}.ts`);
-    if (existsSync(toolPath)) {
-      unlinkSync(toolPath);
+    const deleted = await deleteTool(id);
+    
+    if (!deleted) {
+      return NextResponse.json(
+        { error: `Tool '${id}' not found` },
+        { status: 404 }
+      );
+    }
+    
+    // Also delete config file if exists
+    const configPath = join(getNexusHome(), 'tools', `${id}.config.json`);
+    if (existsSync(configPath)) {
+      unlinkSync(configPath);
     }
     
     return NextResponse.json({
@@ -111,4 +166,66 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Helper function to generate tool code
+function generateToolCode(
+  name: string, 
+  description: string, 
+  parameters: Array<{ name: string; type: string; description: string; required: boolean }> = [],
+  category: string = 'custom'
+): string {
+  const paramsInterface = parameters.map(p => 
+    `  /** ${p.description} */\n  ${p.name}${p.required ? '' : '?'}: ${p.type};`
+  ).join('\n');
+  
+  const validationCode = parameters
+    .filter(p => p.required)
+    .map(p => `  if (!args.${p.name}) {\n    throw new Error('${p.name} is required');\n  }`)
+    .join('\n');
+  
+  return `/**
+ * @name ${name}
+ * @description ${description || 'Custom tool for NEXUS agent'}
+ * @category ${category}
+ * @created ${new Date().toISOString()}
+ */
+
+interface ${name.replace(/\s+/g, '')}Args {
+${paramsInterface || '  // No parameters defined'}
+}
+
+/**
+ * Execute the ${name} tool
+ * @param args - Tool arguments
+ * @returns Tool execution result
+ */
+export async function execute(args: ${name.replace(/\s+/g, '')}Args): Promise<unknown> {
+  // Validate required parameters
+${validationCode || '  // No validation required'}
+  
+  // Tool implementation
+  console.log('Executing ${name} with args:', args);
+  
+  try {
+    // TODO: Implement tool logic
+    const result = {
+      success: true,
+      message: '${name} executed successfully',
+      args,
+      timestamp: new Date().toISOString()
+    };
+    
+    return result;
+  } catch (error) {
+    throw new Error(\`${name} execution failed: \${error instanceof Error ? error.message : 'Unknown error'}\`);
+  }
+}
+
+export default {
+  name: '${name}',
+  description: '${description || 'Custom tool'}',
+  execute
+};
+`;
 }

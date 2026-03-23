@@ -1,16 +1,16 @@
 /**
  * NEXUS API - Chat Endpoint
- * Uses REAL Agent from core module
+ * Full implementation using REAL Agent with AI integration
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getAgent, memorize, getAllMemories } from '@/lib/nexus-bridge';
+import { getAgent, memorize, getAllMemories, processChatMessage, type ChatMessage } from '@/lib/nexus-bridge';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const message = body.message as string;
-    const sessionId = body.sessionId as string | undefined;
+    const history = body.history as ChatMessage[] | undefined;
     
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
@@ -19,36 +19,29 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Get REAL agent instance
-    const agent = await getAgent();
-    
-    // Process message through REAL agent
-    const result = await agent.processInput({
-      type: 'message',
-      content: message,
-      sessionId
-    });
-    
-    // Extract response
-    const response = result.output?.content || result.output?.message || 'I processed your request.';
+    // Process message through REAL agent with AI
+    const response = await processChatMessage(message, history || []);
     
     // Auto-memorize important conversations
     if (message.length > 50 && (
       message.toLowerCase().includes('remember') ||
       message.toLowerCase().includes('important') ||
-      message.toLowerCase().includes('note')
+      message.toLowerCase().includes('note') ||
+      message.toLowerCase().includes('save')
     )) {
       await memorize(`User: ${message.slice(0, 500)}`, 'main');
-    } else {
+    } else if (message.length > 20) {
       await memorize(`User: ${message.slice(0, 200)}`, 'fragment');
     }
     
+    // Memorize assistant response
+    await memorize(`Assistant: ${response.content.slice(0, 200)}`, 'fragment');
+    
     return NextResponse.json({
-      response,
-      sessionId: result.sessionId || sessionId,
-      tokensUsed: result.tokensUsed || 0,
-      processingTime: result.processingTime || 0,
-      timestamp: new Date().toISOString()
+      response: response.content,
+      id: response.id,
+      timestamp: response.timestamp,
+      metadata: response.metadata
     });
     
   } catch (error) {
@@ -64,7 +57,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Get chat history
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const memories = await getAllMemories();
     

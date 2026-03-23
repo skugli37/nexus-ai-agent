@@ -1,6 +1,6 @@
 /**
  * NEXUS API - Status Endpoint
- * Returns REAL agent state using REAL core modules
+ * Full implementation using REAL agent and core modules
  */
 
 import { NextResponse } from 'next/server';
@@ -9,29 +9,25 @@ import {
   getSystemMetrics,
   listTools,
   listSkills,
-  getAllMemories
+  getAllMemories,
+  getConfig
 } from '@/lib/nexus-bridge';
 
 export async function GET() {
   try {
-    // Get REAL agent
+    // Get REAL agent instance
     const agent = await getAgent();
     const state = agent.getState();
+    const metrics = agent.getMetrics();
     
-    // Get REAL metrics
-    const metrics = state.metrics;
-    
-    // Get REAL system metrics
-    const systemMetrics = await getSystemMetrics();
-    
-    // Get REAL tools
-    const tools = await listTools();
-    
-    // Get REAL skills
-    const skills = await listSkills();
-    
-    // Get REAL memories
-    const memories = await getAllMemories();
+    // Get all data in parallel
+    const [systemMetrics, tools, skills, memories, config] = await Promise.all([
+      getSystemMetrics(),
+      listTools(),
+      listSkills(),
+      getAllMemories(),
+      getConfig()
+    ]);
     
     // Calculate memory stats
     const memoryByType: Record<string, number> = {};
@@ -41,18 +37,23 @@ export async function GET() {
     
     return NextResponse.json({
       state: {
+        id: state.id,
+        name: state.name,
         status: state.status,
         phase: state.phase,
         sessionId: state.sessionId,
-        lastActivity: state.lastActivity?.toISOString() || new Date().toISOString()
+        lastActivity: state.lastActivity?.toISOString() || new Date().toISOString(),
+        createdAt: state.createdAt?.toISOString()
       },
       metrics: {
-        tasksCompleted: metrics?.tasksCompleted || 0,
-        tasksFailed: metrics?.tasksFailed || 0,
-        averageResponseTime: metrics?.averageResponseTime || 0,
-        totalTokensUsed: metrics?.totalTokensUsed || 0,
-        dreamCyclesCompleted: metrics?.dreamCyclesCompleted || 0,
-        learningIterations: metrics?.learningIterations || 0
+        tasksCompleted: metrics.tasksCompleted,
+        tasksFailed: metrics.tasksFailed,
+        averageResponseTime: metrics.averageResponseTime,
+        totalTokensUsed: metrics.totalTokensUsed,
+        dreamCyclesCompleted: metrics.dreamCyclesCompleted,
+        learningIterations: metrics.learningIterations,
+        toolsUsed: metrics.toolsUsed,
+        skillsExecuted: metrics.skillsExecuted
       },
       memories: memories.slice(-20),
       memoryStats: {
@@ -61,14 +62,25 @@ export async function GET() {
       },
       systemMetrics,
       skills,
-      tools
+      tools,
+      config: {
+        agentId: config.agentId,
+        agentName: config.agentName,
+        primaryModel: config.primaryModel,
+        utilityModel: config.utilityModel,
+        dreamCycleInterval: config.dreamCycleInterval,
+        memoryLimit: config.memoryLimit,
+        enableLearning: config.enableLearning,
+        enableSelfModification: config.enableSelfModification
+      }
     });
   } catch (error) {
     console.error('Status error:', error);
     
-    // Return partial data on error
     return NextResponse.json({
       state: {
+        id: 'nexus-error',
+        name: 'NEXUS',
         status: 'error',
         phase: 'conscious',
         sessionId: null,
@@ -80,7 +92,9 @@ export async function GET() {
         averageResponseTime: 0,
         totalTokensUsed: 0,
         dreamCyclesCompleted: 0,
-        learningIterations: 0
+        learningIterations: 0,
+        toolsUsed: 0,
+        skillsExecuted: 0
       },
       memories: [],
       memoryStats: { total: 0, byType: {} },
@@ -89,11 +103,12 @@ export async function GET() {
         toolsCount: 0,
         skillsCount: 0,
         pipelinesCount: 0,
-        uptime: process.uptime()
+        uptime: process.uptime(),
+        status: 'degraded'
       },
       skills: [],
       tools: [],
       error: error instanceof Error ? error.message : 'Unknown error'
-    });
+    }, { status: 500 });
   }
 }

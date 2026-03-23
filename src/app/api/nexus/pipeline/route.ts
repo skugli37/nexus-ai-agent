@@ -1,47 +1,64 @@
 /**
  * NEXUS API - Pipeline Endpoint
- * Uses REAL PipelineExecutor from core
+ * Full implementation using PipelineExecutor with real execution
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { executePipeline } from '@/lib/pipeline-executor';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs';
-import { join } from 'path';
-import { getNexusHome } from '@/lib/nexus-bridge';
+import { 
+  listPipelines, 
+  savePipeline, 
+  getPipeline, 
+  deletePipeline, 
+  executePipeline as executePipelineFromBridge,
+  type PipelineNode,
+  type PipelineEdge
+} from '@/lib/nexus-bridge';
 
 // Get all saved pipelines
-export async function GET() {
-  const pipelinesDir = join(getNexusHome(), 'pipelines');
-  const pipelines: Array<{ id: string; name: string; createdAt: string }> = [];
-  
-  if (!existsSync(pipelinesDir)) {
-    return NextResponse.json({ pipelines });
-  }
-  
-  const files = readdirSync(pipelinesDir);
-  for (const file of files) {
-    if (file.endsWith('.json')) {
-      try {
-        const content = readFileSync(join(pipelinesDir, file), 'utf-8');
-        const pipeline = JSON.parse(content);
-        pipelines.push({
-          id: pipeline.id || file,
-          name: pipeline.name || file.replace('.json', ''),
-          createdAt: pipeline.metadata?.createdAt || pipeline.createdAt || new Date().toISOString()
-        });
-      } catch {}
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    
+    if (id) {
+      const pipeline = await getPipeline(id);
+      if (!pipeline) {
+        return NextResponse.json(
+          { error: `Pipeline '${id}' not found` },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json({ pipeline });
     }
+    
+    const pipelines = await listPipelines();
+    
+    return NextResponse.json({ 
+      pipelines,
+      total: pipelines.length
+    });
+  } catch (error) {
+    console.error('Pipeline list error:', error);
+    return NextResponse.json(
+      { error: 'Failed to list pipelines' },
+      { status: 500 }
+    );
   }
-  
-  return NextResponse.json({ pipelines });
 }
 
-// Execute pipeline using REAL executor
+// Create or execute pipeline
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, nodes, connections, save } = body;
+    const { action, id, name, description, nodes, edges, input, save } = body;
     
+    // Execute existing pipeline
+    if (action === 'execute' && id) {
+      const execution = await executePipelineFromBridge(id, input || {});
+      return NextResponse.json(execution);
+    }
+    
+    // Validate nodes
     if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
       return NextResponse.json(
         { error: 'Pipeline nodes are required' },
@@ -49,48 +66,96 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Execute using REAL pipeline executor
-    const result = await executePipeline(
-      name || 'Untitled Pipeline',
-      nodes.map((n: { id: string; type: string; name: string; config: Record<string, unknown> }) => ({
-        id: n.id,
-        type: n.type,
-        name: n.name,
-        config: n.config || {}
-      })),
-      connections || []
-    );
-    
-    // Save pipeline if requested
-    if (save) {
-      const pipelinesDir = join(getNexusHome(), 'pipelines');
-      if (!existsSync(pipelinesDir)) {
-        mkdirSync(pipelinesDir, { recursive: true });
+    // Validate node structure
+    for (const node of nodes) {
+      if (!node.id || !node.type || !node.name) {
+        return NextResponse.json(
+          { error: 'Each node must have id, type, and name' },
+          { status: 400 }
+        );
       }
       
-      writeFileSync(
-        join(pipelinesDir, `${result.pipelineId}.json`),
-        JSON.stringify({
-          id: result.pipelineId,
-          name: name || 'Untitled Pipeline',
-          nodes,
-          connections: connections || [],
-          createdAt: new Date().toISOString(),
-          lastExecution: {
-            executionId: result.executionId,
-            success: result.success,
-            totalExecutionTime: result.totalExecutionTime
-          }
-        }, null, 2)
-      );
+      const validTypes = ['skill', 'tool', 'http', 'code', 'transform', 'condition', 'loop', 'parallel'];
+      if (!validTypes.includes(node.type)) {
+        return NextResponse.json(
+          { error: `Invalid node type: ${node.type}. Valid types: ${validTypes.join(', ')}` },
+          { status: 400 }
+        );
+      }
     }
     
-    return NextResponse.json(result);
+    // Save pipeline
+    if (save || name) {
+      const pipeline = await savePipeline(
+        name || 'Untitled Pipeline',
+        description || '',
+        nodes as PipelineNode[],
+        (edges || []) as PipelineEdge[]
+      );
+      
+      return NextResponse.json({
+        success: true,
+        pipeline,
+        message: 'Pipeline saved successfully'
+      });
+    }
+    
+    // Execute inline pipeline
+    const tempId = `temp-${crypto.randomUUID()}`;
+    await savePipeline(tempId, 'Temporary Pipeline', nodes as PipelineNode[], (edges || []) as PipelineEdge[]);
+    
+    const execution = await executePipelineFromBridge(tempId, input || {});
+    
+    // Delete temporary pipeline
+    await deletePipeline(tempId);
+    
+    return NextResponse.json(execution);
     
   } catch (error) {
     console.error('Pipeline execution error:', error);
     return NextResponse.json(
       { error: 'Pipeline execution failed', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
+
+// Update pipeline
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, name, description, nodes, edges, status } = body;
+    
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Pipeline ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    const existing = await getPipeline(id);
+    if (!existing) {
+      return NextResponse.json(
+        { error: `Pipeline '${id}' not found` },
+        { status: 404 }
+      );
+    }
+    
+    // Update pipeline
+    const updated = await savePipeline(
+      name || existing.name,
+      description || existing.description,
+      nodes || existing.nodes,
+      edges || existing.edges
+    );
+    
+    return NextResponse.json({
+      success: true,
+      pipeline: updated
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to update pipeline' },
       { status: 500 }
     );
   }
@@ -103,16 +168,25 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
     
     if (!id) {
-      return NextResponse.json({ error: 'Pipeline ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Pipeline ID is required' },
+        { status: 400 }
+      );
     }
     
-    const pipelinePath = join(getNexusHome(), 'pipelines', `${id}.json`);
-    if (existsSync(pipelinePath)) {
-      const { unlinkSync } = await import('fs');
-      unlinkSync(pipelinePath);
+    const deleted = await deletePipeline(id);
+    
+    if (!deleted) {
+      return NextResponse.json(
+        { error: `Pipeline '${id}' not found` },
+        { status: 404 }
+      );
     }
     
-    return NextResponse.json({ success: true, message: `Pipeline ${id} deleted` });
+    return NextResponse.json({ 
+      success: true, 
+      message: `Pipeline ${id} deleted` 
+    });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to delete pipeline' },
